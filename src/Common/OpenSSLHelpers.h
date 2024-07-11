@@ -5,8 +5,8 @@
 #include <Common/Exception.h>
 
 #if USE_SSL
-#    include <base/types.h>
-
+#include <base/types.h>
+#include <Poco/Crypto/RSAKey.h>
 
 namespace DB
 {
@@ -22,6 +22,7 @@ void encodeSHA256(const void * text, size_t size, unsigned char * out);
 
 std::vector<uint8_t> hmacSHA256(const std::vector<uint8_t> & key, const std::string & data);
 std::vector<uint8_t> pbkdf2SHA256(std::string_view password, const std::vector<uint8_t>& salt, int iterations);
+std::string calculateHMACwithSHA256(std::string, const Poco::Crypto::RSAKey &);
 
 /// Returns concatenation of error strings for all errors that OpenSSL has recorded, emptying the error queue.
 String getOpenSSLErrors();
