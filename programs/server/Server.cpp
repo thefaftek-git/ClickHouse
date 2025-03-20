@@ -139,7 +139,7 @@
 #    include <Server/SSH/SSHPtyHandlerFactory.h>
 #    include <Common/LibSSHInitializer.h>
 #    include <Common/LibSSHLogger.h>
-#    include <Server/ACMEClient.h>
+#    include <Server/ACME/Client.h>
 #endif
 
 #if USE_GRPC
@@ -2121,7 +2121,7 @@ try
 
             CompressionCodecEncrypted::Configuration::instance().tryLoad(*config, "encryption_codecs");
 #if USE_SSL
-            ACMEClient::ACMEClient::instance().initialize(*config);
+            ACME::Client::instance().initialize(*config);
             CertificateReloader::instance().tryReloadAll(*config);
 #endif
             NamedCollectionFactory::instance().reloadFromConfig(*config);
@@ -2546,8 +2546,9 @@ try
                              "to configuration file.)");
 
 #if USE_SSL
-        ACMEClient::ACMEClient::instance().initialize(config());
+        ACME::Client::instance().initialize(config());
         CertificateReloader::instance().tryLoad(config());
+        CertificateReloader::instance().tryLoadClient(config());
 #endif
 
         /// Must be done after initialization of `servers`, because async_metrics will access `servers` variable from its thread.
