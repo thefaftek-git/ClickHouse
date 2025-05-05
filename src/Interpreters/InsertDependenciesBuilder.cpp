@@ -690,7 +690,6 @@ private:
 };
 
 
-
 InsertDependenciesBuilder::InsertDependenciesBuilder(
     StoragePtr table, ASTPtr query, Block insert_header,
     bool async_insert_, bool skip_destination_table_,
