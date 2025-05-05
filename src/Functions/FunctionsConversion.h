@@ -3753,9 +3753,9 @@ private:
     }
 
 #undef GENERATE_INTERVAL_CASE
+
     template <typename ToDataType>
     requires IsDataTypeDecimal<ToDataType>
-    ALWAYS_INLINE
     WrapperType createDecimalWrapper(const DataTypePtr & from_type, const ToDataType * to_type, bool requested_result_is_nullable) const
     {
         TypeIndex type_index = from_type->getTypeId();
@@ -5517,9 +5517,9 @@ private:
         else
             return wrapper;
     }
+
     /// 'from_type' and 'to_type' are nested types in case of Nullable.
     /// 'requested_result_is_nullable' is true if CAST to Nullable type is requested.
-    ALWAYS_INLINE
     WrapperType prepareImpl(const DataTypePtr & from_type, const DataTypePtr & to_type, bool requested_result_is_nullable) const
     {
         if (isUInt8(from_type) && isBool(to_type))

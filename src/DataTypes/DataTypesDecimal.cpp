@@ -115,7 +115,6 @@ static DataTypePtr createExact(const ASTPtr & arguments)
 
 template <typename FromDataType, typename ToDataType, typename ReturnType>
 requires (IsDataTypeDecimal<FromDataType> && IsDataTypeDecimal<ToDataType>)
-ALWAYS_INLINE
 ReturnType convertDecimalsImpl(const typename FromDataType::FieldType & value, UInt32 scale_from, UInt32 scale_to, typename ToDataType::FieldType & result)
 {
     using FromFieldType = typename FromDataType::FieldType;
