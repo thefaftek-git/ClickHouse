@@ -92,32 +92,30 @@ MULTITARGET_FUNCTION_AVX2_SSE42(
         }
         else
         {
-            // /// Only native integers
+            /// Only native integers
+            if constexpr (add_all_elements)
+            {
+                for (; i < count; i++)
+                    ret = ComparatorClass::cmp(ret, ptr[i]);
+                return ret;
+            }
+
             constexpr bool is_min = std::same_as<ComparatorClass, MinComparator<T>>;
 
             std::vector<T> keep_mask(count);
-            for (size_t j = 0; j < count; j++)
+            for (size_t j = i; j < count; j++)
             {
                 /// keep_number will be 0 or 1
                 bool keep_number = !condition_map[j] == add_if_cond_zero;
-                /// If keep_number = ptr[i] * 1 + 0 * max = ptr[i]
-                /// If not keep_number = ptr[i] * 0 + 1 * max = max
-                /// If keep_number = ptr[i] * 1 + 0 * lowest = ptr[i]
-                /// If not keep_number = ptr[i] * 0 + 1 * lowest = lowest
+                /// If is_min and keep_number = ptr[i] * 1 + 0 * max = ptr[i]
+                /// If is_min and not keep_number = ptr[i] * 0 + 1 * max = max
+                /// If not is_min and keep_number = ptr[i] * 1 + 0 * lowest = ptr[i]
+                /// If not is_min and not keep_number = ptr[i] * 0 + 1 * lowest = lowest
                 keep_mask[j] = ptr[j] * T{keep_number} + T{!keep_number} * (is_min ? std::numeric_limits<T>::max() : std::numeric_limits<T>::lowest());
             }
 
             for (; i < count; i++)
-            {
-                if constexpr (add_all_elements)
-                {
-                    ret = ComparatorClass::cmp(ret, ptr[i]);
-                }
-                else
-                {
-                    ret = ComparatorClass::cmp(ret, keep_mask[i]);
-                }
-            }
+                ret = ComparatorClass::cmp(ret, keep_mask[i]);
             return ret;
         }
     }
