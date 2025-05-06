@@ -105,10 +105,8 @@ MULTITARGET_FUNCTION_AVX2_SSE42(
             for (; i < count; i++)
             {
                 bool keep_number = !condition_map[i] == add_if_cond_zero;
-                if (keep_number)
-                    ret = ComparatorClass::cmp(ret, ptr[i]);
-                else
-                    ret = ComparatorClass::cmp(ret, is_min ? std::numeric_limits<T>::max() : std::numeric_limits<T>::lowest());
+                T val = ptr[i] * T{keep_number} + T{!keep_number} * is_min ? std::numeric_limits<T>::max() : std::numeric_limits<T>::lowest();
+                ret = ComparatorClass::cmp(ret, val);
             }
             return ret;
         }
