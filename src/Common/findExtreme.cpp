@@ -101,12 +101,15 @@ MULTITARGET_FUNCTION_AVX2_SSE42(
             }
 
             constexpr bool is_min = std::same_as<ComparatorClass, MinComparator<T>>;
+            constexpr auto default_value = is_min ? std::numeric_limits<T>::max() : std::numeric_limits<T>::lowest();
 
             for (; i < count; i++)
             {
                 bool keep_number = !condition_map[i] == add_if_cond_zero;
-                T val = ptr[i] * T{keep_number} + T{!keep_number} * (is_min ? std::numeric_limits<T>::max() : std::numeric_limits<T>::lowest());
-                ret = ComparatorClass::cmp(ret, val);
+                T val = ptr[i] * T{keep_number};
+                T val2 = T{keep_number} * default_value;
+                T res = val | val2;
+                ret = ComparatorClass::cmp(ret, res);
             }
             return ret;
         }
