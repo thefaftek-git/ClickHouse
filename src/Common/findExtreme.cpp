@@ -105,12 +105,13 @@ MULTITARGET_FUNCTION_AVX2_SSE42(
 
             for (; i < count; i++)
             {
+                /// keep_number will be 0 or 1
                 bool keep_number = !condition_map[i] == add_if_cond_zero;
-                T mask = keep_number ? std::numeric_limits<T>::max() : 0;
-                T val = ptr[i] & mask;
-                T val2 = ~mask & default_value;
-                T res = val | val2;
-                ret = ComparatorClass::cmp(ret, res);
+                /// If keep_number = ptr[i] * 1 + 0 * max = ptr[i]
+                /// If not keep_number = ptr[i] * 0 + 1 * max = max
+                T val = ptr[i] * T{keep_number};
+                T val2 = T{!keep_number} * default_value;
+                ret = ComparatorClass::cmp(ret, ComparatorClass::cmp(val, val2));
             }
             return ret;
         }
