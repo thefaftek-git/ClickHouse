@@ -106,8 +106,8 @@ MULTITARGET_FUNCTION_AVX2_SSE42(
             for (; i < count; i++)
             {
                 bool keep_number = !condition_map[i] == add_if_cond_zero;
-                T val = ptr[i] * T{keep_number};
-                T val2 = T{keep_number} * default_value;
+                T val = ptr[i] & T{keep_number};
+                T val2 = T{!keep_number} & default_value;
                 T res = val | val2;
                 ret = ComparatorClass::cmp(ret, res);
             }
