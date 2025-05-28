@@ -516,13 +516,13 @@ static void constructPhysicalStep(
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Join is not filled");
 
     auto * join_left_node = node.children[0];
-    makeExpressionNodeOnTopOf(*join_left_node, std::move(left_pre_join_actions), {}, nodes);
+    makeExpressionNodeOnTopOf(*join_left_node, std::move(left_pre_join_actions), {}, nodes, "Left Join Actions");
 
     node.step = std::make_unique<FilledJoinStep>(
         join_left_node->step->getOutputHeader(),
         join_ptr,
         join_settings.max_block_size);
-    makeExpressionNodeOnTopOf(node, std::move(post_join_actions), residual_filter_condition.first, nodes);
+    makeExpressionNodeOnTopOf(node, std::move(post_join_actions), residual_filter_condition.first, nodes, "Post Join Actions");
 }
 
 static void constructPhysicalStep(
@@ -546,8 +546,8 @@ static void constructPhysicalStep(
     auto * join_left_node = node.children[0];
     auto * join_right_node = node.children[1];
 
-    makeExpressionNodeOnTopOf(*join_left_node, std::move(left_pre_join_actions), {}, nodes);
-    makeExpressionNodeOnTopOf(*join_right_node, std::move(right_pre_join_actions), {}, nodes);
+    makeExpressionNodeOnTopOf(*join_left_node, std::move(left_pre_join_actions), {}, nodes, "Left Pre Join Actions");
+    makeExpressionNodeOnTopOf(*join_right_node, std::move(right_pre_join_actions), {}, nodes, "Right Pre Join Actions");
 
     if (const auto * fsmjoin = dynamic_cast<const FullSortingMergeJoin *>(join_ptr.get()))
         addSortingForMergeJoin(fsmjoin, join_left_node, join_right_node, nodes,
@@ -565,7 +565,9 @@ static void constructPhysicalStep(
         false /*optimize_read_in_order*/,
         true /*use_new_analyzer*/);
 
-    makeExpressionNodeOnTopOf(node, std::move(post_join_actions), residual_filter_condition.first, nodes);
+    node.children = {join_left_node, join_right_node};
+
+    makeExpressionNodeOnTopOf(node, std::move(post_join_actions), residual_filter_condition.first, nodes, "Post Join Actions");
 }
 
 static QueryPlanNode buildPhysicalJoinImpl(
@@ -785,10 +787,14 @@ void JoinStepLogical::buildPhysicalJoin(
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Expected JoinStepLogical, got nullptr");
     }
 
+    UInt64 hash_table_key_hash = 0;
+    if (join_step->hash_table_key_hashes)
+        hash_table_key_hash = join_step->hash_table_key_hashes->key_hash_left;
+
     JoinAlgorithmParams join_algorithm_params(
         join_step->join_settings,
         optimization_settings.max_threads,
-        join_step->hash_table_key_hashes->key_hash_left,
+        hash_table_key_hash,
         optimization_settings.max_entries_for_hash_table_stats,
         optimization_settings.initial_query_id,
         optimization_settings.lock_acquire_timeout);
@@ -828,6 +834,7 @@ std::optional<ActionsDAG> JoinStepLogical::getFilterActions(JoinTableSide side, 
 
     if (auto filter_condition = concatConditions(join_expression, side))
     {
+        // TODO: try use `createActionsForConjunction`
         filter_column_name = filter_condition.getColumnName();
         ActionsDAG new_dag = JoinExpressionActions::getSubDAG(filter_condition);
         if (new_dag.getOutputs().size() != 1)

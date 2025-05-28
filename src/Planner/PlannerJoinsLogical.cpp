@@ -171,7 +171,6 @@ void buildJoinUsingCondition(const QueryTreeNodePtr & node, JoinOperatorBuildCon
     for (size_t i = 0; i < num_nodes; ++i)
     {
         auto & using_column_node = using_nodes[i]->as<ColumnNode &>();
-            using_column_node.getColumnSource()->formatASTForErrorMessage(), using_column_node.getColumnSource()->getNodeTypeName());
         auto & inner_columns_list = using_column_node.getExpressionOrThrow()->as<ListNode &>();
         // chassert(inner_columns_list.getNodes().size() == 2);
 
@@ -247,7 +246,7 @@ void addConditionsToJoinOperator(JoinOperatorBuildContext & build_context, std::
 
     auto actions_dag = build_context.expression_actions.getActionsDAG();
     auto nodes = std::ranges::to<std::vector>(std::views::transform(join_conditions, [&](JoinCondition & condition) { return condition.concat(*actions_dag); }));
-    auto * result_node = &actions_dag->addFunction(func_builder_or, nodes, {});
+    const auto * result_node = &actions_dag->addFunction(func_builder_or, nodes, {});
     build_context.join_operator.expression.push_back(JoinActionRef(result_node, build_context.expression_actions));
 }
 

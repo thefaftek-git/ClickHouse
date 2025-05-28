@@ -144,17 +144,6 @@ static size_t addNewFilterStepOrThrow(
 
     /// New filter column is the first one.
     String split_filter_column_name = split_filter.dag.getOutputs()[split_filter.filter_pos]->result_name;
-
-    // If no new columns added, filter just used one of the input columns as-is and moved it to the front, move it back to keep aggregation key in order.
-    if (const auto & input = node.children.at(0)->step->getOutputHeader();
-        input.has(split_filter_column_name) &&
-        split_filter.getOutputs().size() == input.columns())
-    {
-        auto pos = input.getPositionByName(split_filter_column_name);
-        if (pos != 0)
-            std::rotate(split_filter.getOutputs().begin(), split_filter.getOutputs().begin() + 1, split_filter.getOutputs().begin() + pos + 1);
-    }
-
     node.step = std::make_unique<FilterStep>(
         node.children.at(0)->step->getOutputHeader(), std::move(split_filter.dag), std::move(split_filter_column_name), split_filter.remove_filter);
 

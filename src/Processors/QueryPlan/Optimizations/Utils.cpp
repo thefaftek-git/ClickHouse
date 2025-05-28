@@ -25,8 +25,8 @@ bool makeExpressionNodeOnTopOf(
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Cannot create ExpressionStep on top of node without header, dag: {}",
         actions_dag.dumpDAG());
 
-    if (isPassthroughActions(actions_dag))
-        return false;
+    // if (isPassthroughActions(actions_dag))
+    //     return false;
 
     QueryPlanStepPtr step;
 

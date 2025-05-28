@@ -21,7 +21,7 @@ struct RelationStats
     size_t estimated_rows = 0;
     std::unordered_map<String, ColumnStats> column_stats = {};
 
-    String table_name = "";
+    String table_name;
 };
 
 struct DPJoinEntry;

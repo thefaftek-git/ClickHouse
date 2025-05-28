@@ -30,8 +30,15 @@ struct JoinOperator
     std::vector<JoinActionRef> expression = {};
     std::vector<JoinActionRef> residual_filter = {};
 
-    JoinOperator(JoinKind kind_, JoinStrictness strictness_ = JoinStrictness::All, JoinLocality locality_ = JoinLocality::Local, std::vector<JoinActionRef> expression_ = {})
-        : kind(kind_), strictness(strictness_), locality(locality_), expression(std::move(expression_))
+    explicit JoinOperator(
+        JoinKind kind_,
+        JoinStrictness strictness_ = JoinStrictness::All,
+        JoinLocality locality_ = JoinLocality::Local,
+        std::vector<JoinActionRef> expression_ = {})
+        : kind(kind_)
+        , strictness(strictness_)
+        , locality(locality_)
+        , expression(std::move(expression_))
     {}
 
     void serialize(WriteBuffer & out, const ActionsDAG * actions_dag_) const;

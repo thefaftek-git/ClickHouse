@@ -6,6 +6,7 @@
 #include <Functions/IFunction.h>
 
 #include <Interpreters/castColumn.h>
+#include <Interpreters/Context_fwd.h>
 
 
 namespace DB
@@ -14,14 +15,15 @@ namespace DB
 namespace ErrorCodes
 {
     extern const int NUMBER_OF_ARGUMENTS_DOESNT_MATCH;
+    extern const int LOGICAL_ERROR;
 }
 
 namespace
 {
 
 /// Implements the function firstTruthy which takes a set of arguments and
-/// returns the value of the leftmost non-falsy argument.
-/// If all arguments are falsy, returns the last argument.
+/// returns the value of the leftmost non-falsey argument.
+/// If all arguments are falsey, returns the last argument.
 /// Result type is the supertype of all arguments.
 class FunctionFirstTruthy : public IFunction
 {
@@ -107,7 +109,7 @@ public:
             /// Check each argument for truthiness
             for (size_t arg_idx = 0; !found && arg_idx < num_columns; ++arg_idx)
             {
-                /// A value is considered "falsy" if:
+                /// A value is considered "falsey" if:
                 /// - It's NULL (isNullAt returns true)
                 /// - It's a default value (isDefaultAt returns true)
                 /// For example:
