@@ -167,21 +167,32 @@ void buildJoinUsingCondition(const QueryTreeNodePtr & node, JoinOperatorBuildCon
 
     auto & join_operator = builder_context.join_operator;
 
+    JoinActionRef::AddFunction using_concat_function(FunctionFactory::instance().get("firstTruthy", nullptr));
     for (size_t i = 0; i < num_nodes; ++i)
     {
         auto & using_column_node = using_nodes[i]->as<ColumnNode &>();
+            using_column_node.getColumnSource()->formatASTForErrorMessage(), using_column_node.getColumnSource()->getNodeTypeName());
         auto & inner_columns_list = using_column_node.getExpressionOrThrow()->as<ListNode &>();
-        chassert(inner_columns_list.getNodes().size() == 2);
+        // chassert(inner_columns_list.getNodes().size() == 2);
 
         std::vector<JoinActionRef> args;
-        args.push_back(builder_context.addExpression(inner_columns_list.getNodes().at(0)));
-        args.push_back(builder_context.addExpression(inner_columns_list.getNodes().at(1)));
+        const auto & inner_columns = inner_columns_list.getNodes();
+        if (inner_columns.size() < 2)
+            throw Exception(ErrorCodes::LOGICAL_ERROR,
+                "Using column {} expected to have at least 2 inner columns, in query tree {}",
+                using_column_node.getColumnName(), node->dumpTree());
+
+        for (size_t j = 0; j < inner_columns.size() - 1; ++j)
+            args.push_back(builder_context.addExpression(inner_columns[j]));
+
+        auto lhs = JoinActionRef::transform(args, using_concat_function);
+        auto rhs = builder_context.addExpression(inner_columns.back());
 
         /// For ASOF join, the last column in USING list is the ASOF column
         if (join_operator.strictness == JoinStrictness::Asof && i == num_nodes - 1)
             operator_function = JoinActionRef::AddFunction(JoinConditionOperator::GreaterOrEquals);
 
-        auto op = JoinActionRef::transform(args, operator_function);
+        auto op = JoinActionRef::transform({lhs, rhs}, operator_function);
         join_operator.expression.emplace_back(op);
     }
 }
