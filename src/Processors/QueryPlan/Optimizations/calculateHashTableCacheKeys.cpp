@@ -110,7 +110,7 @@ void calculateHashTableCacheKeys(QueryPlan::Node & root)
                                        join_step->getJoinSettings().join_algorithms,
                                        join_step->getJoinOperator().kind,
                                        join_step->getJoinOperator().strictness,
-                                       join_step->hasPreparedJoinStorage(),
+                                       typeid_cast<JoinStepLogicalLookup *>(node.children.back()->step.get()),
                                        single_disjunct);
 
             chassert(node.children.size() == 2);

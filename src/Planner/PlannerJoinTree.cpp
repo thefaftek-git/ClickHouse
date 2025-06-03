@@ -2105,13 +2105,7 @@ JoinTreeQueryPlan joinPlansWithStep(
     plans.emplace_back(std::make_unique<QueryPlan>(std::move(right_join_tree_query_plan.query_plan)));
 
     QueryPlan result_plan;
-    auto inputs_count = join_step->getInputHeaders().size();
-    if (inputs_count == 2)
-        result_plan.unitePlans(std::move(join_step), {std::move(plans)});
-    else if (inputs_count == 1)
-        result_plan = std::move(*plans[0]);
-    else
-        throw Exception(ErrorCodes::LOGICAL_ERROR, "JOIN step expected to have 1 or 2 inputs. Actual {}", inputs_count);
+    result_plan.unitePlans(std::move(join_step), {std::move(plans)});
 
     /// Collect all required row_policies and actions sets from left and right join tree query plans
 
@@ -2164,8 +2158,13 @@ JoinTreeQueryPlan buildQueryPlanForJoinNode(
         join_node,
         planner_context);
 
-    join_step_logical->setPreparedJoinStorage(
-        tryGetStorageInTableJoin(join_node.getRightTableExpression(), planner_context));
+    auto prepared_join = tryGetStorageInTableJoin(join_node.getRightTableExpression(), planner_context);
+    if (prepared_join)
+    {
+        auto join_lookup_step = std::make_unique<JoinStepLogicalLookup>(right_join_tree_query_plan.query_plan.getCurrentHeader(), std::move(prepared_join));
+        right_join_tree_query_plan.query_plan = {};
+        right_join_tree_query_plan.query_plan.addStep(std::move(join_lookup_step));
+    }
 
     appendSetsFromActionsDAG(join_step_logical->getActionsDAG(), left_join_tree_query_plan.useful_sets);
     return joinPlansWithStep(

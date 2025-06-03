@@ -228,6 +228,19 @@ void JoinStepLogical::updateOutputHeader()
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Output header is empty, actions_dag: {}", actions_dag->dumpDAG());
 }
 
+JoinStepLogicalLookup::JoinStepLogicalLookup(Block header, PreparedJoinStorage prepared_join_storage_)
+    : ISourceStep(std::move(header))
+    , prepared_join_storage(std::move(prepared_join_storage_))
+{
+}
+
+void JoinStepLogicalLookup::initializePipeline(QueryPipelineBuilder &, const BuildQueryPipelineSettings &)
+{
+    throw Exception(
+        ErrorCodes::NOT_IMPLEMENTED,
+        "Cannot read from {} step. This step should be optimized to FilledJoin step.", getName());
+}
+
 /// When we have an expression like `a AND b`, it can work even when `a` and `b` are non-boolean values,
 /// because the AND operator will implicitly convert them to booleans. The result will be either boolean or nullable.
 /// In some cases we need to split `a` and `b` into separate expressions, but we want to preserve the same
@@ -333,8 +346,6 @@ bool addJoinPredicatesToTableJoin(std::vector<JoinActionRef> & predicates, Table
     return has_join_predicates;
 }
 
-
-void JoinStepLogical::setPreparedJoinStorage(PreparedJoinStorage storage) { prepared_join_storage = std::move(storage); }
 
 static Block blockWithColumns(ColumnsWithTypeAndName columns)
 {
@@ -509,11 +520,10 @@ static void constructPhysicalStep(
     const SortingStep::Settings &,
     QueryPlan::Nodes & nodes)
 {
-    if (node.children.size() != 1)
-        throw Exception(ErrorCodes::LOGICAL_ERROR, "Expected 1 child, got {}", node.children.size());
-
     if (!join_ptr->isFilled())
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Join is not filled");
+
+    node.children.resize(1);
 
     auto * join_left_node = node.children[0];
     makeExpressionNodeOnTopOf(*join_left_node, std::move(left_pre_join_actions), {}, nodes, "Left Join Actions");
@@ -578,7 +588,6 @@ static QueryPlanNode buildPhysicalJoinImpl(
     JoinAlgorithmParams join_algorithm_params,
     SortingStep::Settings sorting_settings,
     const ActionsDAG::NodeRawConstPtrs & actions_after_join,
-    PreparedJoinStorage prepared_join_storage,
     const QueryPlanOptimizationSettings & optimization_settings,
     QueryPlan::Nodes & nodes)
 {
@@ -586,8 +595,11 @@ static QueryPlanNode buildPhysicalJoinImpl(
         Context::getGlobalContextInstance()->getGlobalTemporaryVolume(),
         Context::getGlobalContextInstance()->getTempDataOnDisk());
 
-    if (prepared_join_storage)
+    auto * logical_lookup = typeid_cast<JoinStepLogicalLookup *>(children.back()->step.get());
+    PreparedJoinStorage prepared_join_storage;
+    if (logical_lookup)
     {
+        prepared_join_storage = std::move(logical_lookup->getPreparedJoinStorage());
         prepared_join_storage.visit([&table_join](const auto & storage_)
         {
             table_join->setStorageJoin(storage_);
@@ -810,16 +822,10 @@ void JoinStepLogical::buildPhysicalJoin(
         join_algorithm_params,
         join_step->sorting_settings,
         join_step->actions_after_join,
-        join_step->prepared_join_storage,
         optimization_settings,
         nodes);
 
     node = std::move(new_node);
-}
-
-bool JoinStepLogical::hasPreparedJoinStorage() const
-{
-    return prepared_join_storage;
 }
 
 std::optional<ActionsDAG> JoinStepLogical::getFilterActions(JoinTableSide side, String & filter_column_name)
@@ -860,9 +866,6 @@ void JoinStepLogical::serializeSettings(QueryPlanSerializationSettings & setting
 
 void JoinStepLogical::serialize(Serialization & ctx) const
 {
-    if (prepared_join_storage)
-        throw Exception(ErrorCodes::NOT_IMPLEMENTED, "Serialization of JoinStepLogical with prepared storage is not implemented");
-
     UInt8 flags = 0;
     writeIntBinary(flags, ctx.out);
 

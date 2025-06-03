@@ -3,6 +3,7 @@
 #include <optional>
 #include <Interpreters/JoinOperator.h>
 #include <Processors/QueryPlan/IQueryPlanStep.h>
+#include <Processors/QueryPlan/ISourceStep.h>
 #include <Processors/QueryPlan/ITransformingStep.h>
 #include <Processors/QueryPlan/JoinStep.h>
 #include <Processors/QueryPlan/SortingStep.h>
@@ -74,8 +75,6 @@ public:
     void describeActions(JSONBuilder::JSONMap & map) const override;
     void describeActions(FormatSettings & settings) const override;
 
-    bool hasPreparedJoinStorage() const;
-    void setPreparedJoinStorage(PreparedJoinStorage storage);
     const SortingStep::Settings & getSortingSettings() const { return sorting_settings; }
     const JoinSettings & getJoinSettings() const { return join_settings; }
     const JoinOperator & getJoinOperator() const { return join_operator; }
@@ -145,8 +144,6 @@ protected:
     /// It can be input or node with toNullable function applied to input
     std::vector<const ActionsDAG::Node *> actions_after_join = {};
 
-    PreparedJoinStorage prepared_join_storage;
-
     bool use_nulls;
 
     JoinSettings join_settings;
@@ -157,6 +154,21 @@ protected:
 
     /// Add some information from convertToPhysical to description in explain output.
     std::vector<std::pair<String, String>> runtime_info_description;
+};
+
+
+class JoinStepLogicalLookup final : public ISourceStep
+{
+public:
+    JoinStepLogicalLookup(Block header, PreparedJoinStorage prepared_join_storage_);
+
+    void initializePipeline(QueryPipelineBuilder &, const BuildQueryPipelineSettings &) override;
+    String getName() const override { return "JoinStepLogicalLookup"; }
+
+    PreparedJoinStorage & getPreparedJoinStorage() { return prepared_join_storage; }
+
+private:
+    PreparedJoinStorage prepared_join_storage;
 };
 
 }

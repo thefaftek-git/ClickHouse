@@ -265,7 +265,7 @@ optimizeJoinLogical(QueryPlan::Node & node, QueryPlan::Nodes &, const QueryPlanO
     if (!join_step)
         return {};
 
-    if (join_step->hasPreparedJoinStorage())
+    if (typeid_cast<JoinStepLogicalLookup *>(node.children.back()->step.get())) //join_step->hasPreparedJoinStorage())
         return {};
 
     if (node.children.size() != 2)

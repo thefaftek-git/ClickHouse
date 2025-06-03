@@ -11,7 +11,7 @@ namespace DB::QueryPlanOptimizations
 size_t trySplitJoin(QueryPlan::Node * node, QueryPlan::Nodes & nodes)
 {
     auto * join_step = typeid_cast<JoinStepLogical *>(node->step.get());
-    if (!join_step || node->children.size() != 2)
+    if (!join_step || node->children.size() != 2 || typeid_cast<JoinStepLogicalLookup *>(node->children.back()->step.get()))
         return 0;
 
     size_t num_new_nodes = 0;
