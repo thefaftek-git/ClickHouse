@@ -7,6 +7,9 @@
 
 #include <Interpreters/castColumn.h>
 #include <Interpreters/Context_fwd.h>
+#include <DataTypes/DataTypeNullable.h>
+#include <Columns/ColumnNullable.h>
+#include <DataTypes/DataTypeLowCardinality.h>
 
 
 namespace DB
@@ -66,41 +69,59 @@ public:
         if (arguments.size() == 1)
             return arguments[0];
 
-        return getLeastSupertype(arguments);
+        return recursiveRemoveLowCardinality(getLeastSupertype(arguments));
     }
 
     ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const override
     {
-        if (arguments.empty())
+        if (arguments.empty() || result_type->onlyNull())
             return result_type->createColumnConstWithDefaultValue(input_rows_count);
 
         if (arguments.size() == 1)
             return castColumn(arguments[0], result_type);
 
         size_t num_columns = arguments.size();
+        auto common_type = removeNullable(result_type);
 
-        auto result_col = result_type->createColumn();
-        result_col->reserve(input_rows_count);
-
-        /// Cast all arguments to the result type
+        /// Cast all arguments to the common_type
         /// Use this columns to insert values into the result column
+        std::vector<ColumnPtr> materialized_columns;
         std::vector<ColumnPtr> casted_columns;
+        std::vector<const NullMap *> null_maps;
+
+        materialized_columns.reserve(num_columns);
         casted_columns.reserve(num_columns);
+        null_maps.reserve(num_columns);
+
         for (const auto & arg : arguments)
         {
-            auto casted_column = castColumn(arg, result_type);
-            casted_column = casted_column->convertToFullColumnIfConst();
-            casted_column = casted_column->convertToFullColumnIfSparse();
+            auto column = arg.column->convertToFullColumnIfConst()->convertToFullColumnIfSparse()->convertToFullColumnIfLowCardinality();
 
-            if (casted_column->getDataType() != result_col->getDataType())
+            auto column_to_cast = arg;
+            column_to_cast.column = column;
+
+            const NullMap * null_map = nullptr;
+            if (const auto * col_nullable = typeid_cast<const ColumnNullable *>(column.get()))
             {
-                throw Exception(ErrorCodes::LOGICAL_ERROR,
-                    "All arguments must cast to the same type, got {} and {} for result type {}",
-                    casted_column->dumpStructure(), result_col->dumpStructure(), result_type->getName());
+                null_map = &col_nullable->getNullMapColumn().getData();
+                column_to_cast.column = col_nullable->getNestedColumnPtr();
+                column_to_cast.type = removeNullable(column_to_cast.type);
             }
 
+            auto casted_column = castColumn(column_to_cast, common_type);
+
+            materialized_columns.push_back(std::move(column));
             casted_columns.push_back(std::move(casted_column));
+            null_maps.push_back(null_map);
         }
+
+        auto result_col = common_type->createColumn();
+        result_col->reserve(input_rows_count);
+
+        NullMap result_null_map;
+        if (result_type->isNullable())
+            /// Let's hope it's assign(size, value), not assign(begin, end)
+            result_null_map.assign(input_rows_count, UInt8(0));
 
         for (size_t row = 0; row < input_rows_count; ++row)
         {
@@ -116,7 +137,8 @@ public:
                 /// - for numeric types, the default is 0
                 /// - for strings, the default is ''
                 /// - for arrays, the default is []
-                if (!arguments[arg_idx].column->isNullAt(row) && !arguments[arg_idx].column->isDefaultAt(row))
+                bool is_null = null_maps[arg_idx] && (*null_maps[arg_idx])[row];
+                if (!is_null && !casted_columns[arg_idx]->isDefaultAt(row))
                 {
                     /// Found a truthy value, insert it into the result
                     result_col->insertFrom(*casted_columns[arg_idx], row);
@@ -127,10 +149,19 @@ public:
             /// If no truthy value was found, use the last argument
             if (!found)
             {
-                const auto & last_column = casted_columns.back();
-                result_col->insertFrom(*last_column, row);
+                result_col->insertDefault();
+                if (!result_null_map.empty())
+                    result_null_map[row] = 1;
             }
         }
+
+        if (!result_null_map.empty())
+        {
+            auto null_mask_col = ColumnUInt8::create();
+            null_mask_col->getData().swap(result_null_map);
+            result_col = ColumnNullable::create(std::move(result_col), std::move(null_mask_col));
+        }
+
         return result_col;
     }
 };
