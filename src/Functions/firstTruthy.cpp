@@ -154,7 +154,7 @@ public:
             }
         }
 
-        if (!result_null_map.empty())
+        if (result_type->isNullable())
         {
             auto null_mask_col = ColumnUInt8::create();
             null_mask_col->getData().swap(result_null_map);
