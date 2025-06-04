@@ -1,12 +1,7 @@
 #pragma once
 
 #include <Interpreters/ActionsDAG.h>
-#include <bitset>
-#include <initializer_list>
-#include <memory>
-#include <utility>
 #include <ranges>
-#include <vector>
 #include <boost/dynamic_bitset.hpp>
 #include <Core/Joins.h>
 #include <Functions/IFunctionAdaptors.h>

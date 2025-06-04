@@ -1,19 +1,14 @@
 #pragma once
 
 #include <Core/Joins.h>
-#include <vector>
-#include <string>
-#include <ranges>
-#include <optional>
-#include <Analyzer/IQueryTreeNode.h>
-#include <Interpreters/ActionsDAG.h>
-#include <Core/Settings.h>
 #include <Interpreters/JoinExpressionActions.h>
 
 #include <QueryPipeline/SizeLimits.h>
 
 namespace DB
 {
+
+struct Settings;
 
 struct JoinOperator
 {
