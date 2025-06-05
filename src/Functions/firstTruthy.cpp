@@ -98,6 +98,7 @@ public:
 
             auto column_to_cast = arg;
             column_to_cast.column = column;
+            column_to_cast.type = recursiveRemoveLowCardinality(arg.type);
 
             const NullMap * null_map = nullptr;
             if (const auto * col_nullable = typeid_cast<const ColumnNullable *>(column.get()))
