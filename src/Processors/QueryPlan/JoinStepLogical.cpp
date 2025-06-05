@@ -297,11 +297,13 @@ void predicateOperandsToCommonType(JoinActionRef & left_node, JoinActionRef & ri
 
 bool addJoinPredicatesToTableJoin(std::vector<JoinActionRef> & predicates, TableJoin::JoinOnClause & table_join_clause, std::unordered_set<JoinActionRef> & used_expressions)
 {
+    // std::cerr << "addJoinPredicatesToTableJoin" << std::endl;
     bool has_join_predicates = false;
     std::vector<JoinActionRef> new_predicates;
     for (size_t i = 0; i < predicates.size(); ++i)
     {
         auto & predicate = new_predicates.emplace_back(std::move(predicates[i]));
+        // std::cerr << "Predicate: " << predicate.getColumnName() << std::endl;
         auto [predicate_op, lhs, rhs] = predicate.asBinaryPredicate();
         if (predicate_op != JoinConditionOperator::Equals && predicate_op != JoinConditionOperator::NullSafeEquals)
             continue;
@@ -333,6 +335,7 @@ bool addJoinPredicatesToTableJoin(std::vector<JoinActionRef> & predicates, Table
         }
 
         has_join_predicates = true;
+        // std::cerr << "Adding key " << lhs.getColumnName() << ' ' << rhs.getColumnName() << std::endl;
         table_join_clause.addKey(lhs.getColumnName(), rhs.getColumnName(), null_safe_comparison);
 
         /// We applied predicate, do not add it to residual conditions
@@ -622,14 +625,18 @@ static QueryPlanNode buildPhysicalJoinImpl(
                 && TableJoin::isEnabledAlgorithm(join_settings.join_algorithms, JoinAlgorithm::HASH)
                 && join_operator.strictness == JoinStrictness::All;
 
+            table_join_clauses.pop_back();
             is_disjunctive_condition = tryAddDisjunctiveConditions(
                 join_expression, table_join_clauses, used_expressions, !can_convert_to_cross);
 
-            if (!is_disjunctive_condition && !can_convert_to_cross)
-                throw Exception(ErrorCodes::INVALID_JOIN_ON_EXPRESSION, "Cannot determine join keys in JOIN ON expression {}",
-                    formatJoinCondition(join_expression));
-            join_operator.kind = JoinKind::Cross;
-            table_join_clauses.pop_back();
+            if (!is_disjunctive_condition)
+            {
+                if (!can_convert_to_cross)
+                    throw Exception(ErrorCodes::INVALID_JOIN_ON_EXPRESSION, "Cannot determine join keys in JOIN ON expression {}",
+                        formatJoinCondition(join_expression));
+
+                join_operator.kind = JoinKind::Cross;
+            }
         }
     }
     else if (!join_expression.empty())
@@ -730,8 +737,13 @@ static QueryPlanNode buildPhysicalJoinImpl(
         used_expressions.emplace(node, expression_actions);
     }
 
+    // std::cerr << expression_actions.getActionsDAG()->dumpDAG() << std::endl;
+
     ActionsDAG left_dag = expression_actions.getSubDAG(used_expressions | std::views::filter([](const auto & node) { return node.fromLeft() || node.fromNone(); }));
     ActionsDAG right_dag = expression_actions.getSubDAG(used_expressions | std::views::filter([](const auto & node) { return node.fromRight(); }));
+
+    // std::cerr << left_dag.dumpDAG() << std::endl;
+    // std::cerr << right_dag.dumpDAG() << std::endl;
 
     auto common_dag = expression_actions.getActionsDAG();
 
@@ -745,6 +757,8 @@ static QueryPlanNode buildPhysicalJoinImpl(
 
     ActionsDAG residual_dag = ActionsDAG::foldActionsByProjection(actions_after_join_map, required_output_nodes);
 
+    // std::cerr << "Residual \n" << residual_dag.dumpDAG() << std::endl;
+
     table_join->setInputColumns(
         left_dag.getNamesAndTypesList(),
         right_dag.getNamesAndTypesList());
@@ -753,6 +767,10 @@ static QueryPlanNode buildPhysicalJoinImpl(
 
     Block left_sample_block = blockWithColumns(left_dag.getResultColumns());
     Block right_sample_block = blockWithColumns(right_dag.getResultColumns());
+
+    // std::cerr << left_sample_block.dumpStructure() << std::endl;
+    // std::cerr << right_sample_block.dumpStructure() << std::endl;
+    // std::cerr << table_join->isJoinWithConstant() << std::endl;
 
     auto join_algorithm_ptr = chooseJoinAlgorithm(
         table_join,
