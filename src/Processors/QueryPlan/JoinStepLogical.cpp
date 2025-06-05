@@ -105,7 +105,8 @@ static void addToNullableIfNeeded(
             continue;
 
         JoinActionRef input_action(node, expression_actions);
-        if ((to_null_left && input_action.fromLeft()) || (to_null_right && input_action.fromRight()))
+        bool convert_to_nullable = (to_null_left && input_action.fromLeft()) || (to_null_right && input_action.fromRight());
+        if (convert_to_nullable && removeLowCardinality(node->result_type)->canBeInsideNullable())
         {
             String original_name = node->result_name;
             node = &actions_dag->addFunction(to_nullable, {node}, {});
