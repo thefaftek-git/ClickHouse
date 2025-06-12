@@ -120,8 +120,6 @@ static void addToNullableIfNeeded(
             node = &actions_dag->addFunction(to_nullable, {node}, {});
         }
 
-        actions_after_join.push_back(node);
-
         if (node->result_name != original_name)
             node = &actions_dag->addAlias(*node, std::move(original_name));
 
@@ -727,8 +725,8 @@ static QueryPlanNode buildPhysicalJoinImpl(
     {
         if (action->type == ActionsDAG::ActionType::ALIAS)
         {
-            bool remove_right_nullable = prepared_join_storage && use_nulls && isLeftOrFull(join_operator.kind);
-            if (remove_right_nullable && JoinActionRef(action, expression_actions).fromRight())
+            //bool remove_right_nullable = prepared_join_storage && use_nulls && isLeftOrFull(join_operator.kind);
+            if (prepared_join_storage && JoinActionRef(action, expression_actions).fromRight())
             {
                 /// StorageJoin should convert to nullable by itself.
             }
@@ -774,10 +772,10 @@ static QueryPlanNode buildPhysicalJoinImpl(
 
     for (const auto * action : actions_after_join)
     {
-        bool remove_right_nullable = prepared_join_storage && use_nulls && isLeftOrFull(join_operator.kind);
+        //bool remove_right_nullable = prepared_join_storage && use_nulls && isLeftOrFull(join_operator.kind);
         if (action->type == ActionsDAG::ActionType::ALIAS)
         {
-            if (remove_right_nullable && JoinActionRef(action, expression_actions).fromRight())
+            if (prepared_join_storage && JoinActionRef(action, expression_actions).fromRight())
             {
                 /// x (Alias) -> toNullable(x) -> x (Input)
                 action = action->children.at(0)->children.at(0);
