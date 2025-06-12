@@ -170,7 +170,25 @@ public:
 
 REGISTER_FUNCTION(FirstTruthy)
 {
-    factory.registerFunction<FunctionFirstTruthy>({}, FunctionFactory::Case::Insensitive);
+    FunctionDocumentation::Description description = "Returns the first non-falsey value in a list of arguments. "
+        "A value is considered 'falsey' if it's NULL or the default value for its type (0, empty string, empty array, etc.). "
+        "If all values are falsey, returns the last argument.";
+    FunctionDocumentation::Syntax syntax = "firstTruthy(arg1, arg2, ...)";
+    FunctionDocumentation::Arguments arguments = {
+        {"arg1, arg2, ...", "Two or more arguments of any types with compatible types."}
+    };
+    FunctionDocumentation::ReturnedValue returned_value = "The first non-falsey value encountered when evaluating arguments from left to right. "
+        "The result type is the least supertype of all argument types.";
+    FunctionDocumentation::Examples examples = {
+        {"Basic example", "SELECT firstTruthy(0, NULL, 42, 43)", "42"},
+        {"All falsey", "SELECT firstTruthy(0 :: Int32, 0 :: UInt8, NULL, 0 :: UInt32)", "0"},
+        {"Arrays", "SELECT firstTruthy([], [NULL], [1, 2, 3])", "[NULL]"},
+    };
+    FunctionDocumentation::IntroducedIn introduced_in = FunctionDocumentation::VERSION_UNKNOWN;
+    FunctionDocumentation::Category categories = FunctionDocumentation::Category::Conditional;
+    FunctionDocumentation documentation = {description, syntax, arguments, returned_value, examples, introduced_in, categories};
+
+    factory.registerFunction<FunctionFirstTruthy>(documentation, FunctionFactory::Case::Insensitive);
 }
 
 }
