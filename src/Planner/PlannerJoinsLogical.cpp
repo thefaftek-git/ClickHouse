@@ -158,7 +158,8 @@ struct JoinCondition
     }
 };
 
-void buildJoinUsingCondition(const QueryTreeNodePtr & node, JoinOperatorBuildContext & builder_context)
+std::unordered_map<String, DataTypePtr>
+buildJoinUsingCondition(const QueryTreeNodePtr & node, JoinOperatorBuildContext & builder_context)
 {
     JoinActionRef::AddFunction operator_function(JoinConditionOperator::Equals);
 
@@ -166,6 +167,8 @@ void buildJoinUsingCondition(const QueryTreeNodePtr & node, JoinOperatorBuildCon
     size_t num_nodes = using_nodes.size();
 
     auto & join_operator = builder_context.join_operator;
+
+    std::unordered_map<String, DataTypePtr> changed_types;
 
     JoinActionRef::AddFunction using_concat_function(FunctionFactory::instance().get("firstTruthy", nullptr));
     for (size_t i = 0; i < num_nodes; ++i)
@@ -181,6 +184,15 @@ void buildJoinUsingCondition(const QueryTreeNodePtr & node, JoinOperatorBuildCon
                 "Using column {} expected to have at least 2 inner columns, in query tree {}",
                 using_column_node.getColumnName(), node->dumpTree());
 
+        for (const auto & inner_node : inner_columns)
+        {
+            const auto & inner_column = inner_node->as<ColumnNode &>();
+
+            const auto & table_expression_data = builder_context.planner_context->getTableExpressionDataOrThrow(inner_column.getColumnSource());
+            const auto & column_identifier = table_expression_data.getColumnIdentifierOrThrow(inner_column.getColumnName());
+            changed_types[column_identifier] = using_column_node.getResultType();
+        }
+
         for (size_t j = 0; j < inner_columns.size() - 1; ++j)
             args.push_back(builder_context.addExpression(inner_columns[j]));
 
@@ -194,6 +206,8 @@ void buildJoinUsingCondition(const QueryTreeNodePtr & node, JoinOperatorBuildCon
         auto op = JoinActionRef::transform({lhs, rhs}, operator_function);
         join_operator.expression.emplace_back(op);
     }
+
+    return changed_types;
 }
 
 void buildJoinCondition(const QueryTreeNodePtr & node, JoinOperatorBuildContext & builder_context, JoinCondition & join_condition)
@@ -414,6 +428,7 @@ std::unique_ptr<JoinStepLogical> buildJoinStepLogical(
     const auto & query_settings = build_context.planner_context->getQueryContext()->getSettingsRef();
     const auto & join_algorithms = query_settings[Setting::join_algorithm];
 
+    std::unordered_map<String, DataTypePtr> changed_types;
     /// CROSS/PASTE JOIN: doesn't have expression
     if (join_expression_node == nullptr)
     {
@@ -423,7 +438,7 @@ std::unique_ptr<JoinStepLogical> buildJoinStepLogical(
     /// USING
     else if (join_node.isUsingJoinExpression())
     {
-        buildJoinUsingCondition(join_expression_node, build_context);
+        changed_types = buildJoinUsingCondition(join_expression_node, build_context);
     }
     /// JOIN ON non-constant expression
     else if (!join_expression_constant.has_value() || build_context.join_operator.strictness == JoinStrictness::Asof)
@@ -458,6 +473,7 @@ std::unique_ptr<JoinStepLogical> buildJoinStepLogical(
         std::move(build_context.join_operator),
         std::move(build_context.expression_actions),
         outer_scope_columns,
+        changed_types,
         settings[Setting::join_use_nulls],
         JoinSettings(settings),
         SortingStep::Settings(settings));

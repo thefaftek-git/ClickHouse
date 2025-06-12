@@ -52,6 +52,7 @@
 #include <algorithm>
 #include <ranges>
 #include <stack>
+#include <unordered_map>
 
 namespace DB
 {
@@ -89,7 +90,8 @@ static void addToNullableIfNeeded(
     JoinKind join_kind,
     bool use_nulls,
     const NameSet & required_output_columns,
-    std::vector<const ActionsDAG::Node *> & actions_after_join)
+    std::vector<const ActionsDAG::Node *> & actions_after_join,
+    const std::unordered_map<String, DataTypePtr> & changed_types)
 {
     auto to_nullable = FunctionFactory::instance().get("toNullable", nullptr);
 
@@ -104,27 +106,34 @@ static void addToNullableIfNeeded(
         if (!required_output_columns.contains(node->result_name))
             continue;
 
+        String original_name = node->result_name;
+
+        if (auto it = changed_types.find(node->result_name); it != changed_types.end())
+        {
+            node = &actions_dag->addCast(*node, it->second, {});
+        }
+
         JoinActionRef input_action(node, expression_actions);
         bool convert_to_nullable = (to_null_left && input_action.fromLeft()) || (to_null_right && input_action.fromRight());
         if (convert_to_nullable && removeLowCardinality(node->result_type)->canBeInsideNullable())
         {
-            String original_name = node->result_name;
             node = &actions_dag->addFunction(to_nullable, {node}, {});
-            outputs.push_back(&actions_dag->addAlias(*node, std::move(original_name)));
         }
-        else
-        {
-            outputs.push_back(node);
-        }
+
         actions_after_join.push_back(node);
+
+        if (node->result_name != original_name)
+            outputs.push_back(&actions_dag->addAlias(*node, std::move(original_name)));
+        else
+            outputs.push_back(node);
     }
 
     if (outputs.empty())
     {
         ColumnWithTypeAndName column(ColumnUInt8::create(), std::make_shared<DataTypeUInt8>(), "dummy");
         const auto * node = &actions_dag->addColumn(std::move(column));
-        outputs.push_back(node);
         actions_after_join.push_back(node);
+        outputs.push_back(node);
     }
 }
 
@@ -134,6 +143,7 @@ JoinStepLogical::JoinStepLogical(
     JoinOperator join_operator_,
     JoinExpressionActions join_expression_actions_,
     const NameSet & required_output_columns_,
+    const std::unordered_map<String, DataTypePtr> & changed_types,
     bool use_nulls_,
     JoinSettings join_settings_,
     SortingStep::Settings sorting_settings_)
@@ -142,7 +152,7 @@ JoinStepLogical::JoinStepLogical(
     , join_settings(std::move(join_settings_))
     , sorting_settings(std::move(sorting_settings_))
 {
-    addToNullableIfNeeded(expression_actions, join_operator.kind, use_nulls_, required_output_columns_, actions_after_join);
+    addToNullableIfNeeded(expression_actions, join_operator.kind, use_nulls_, required_output_columns_, actions_after_join, changed_types);
     updateInputHeaders({left_header_, right_header_});
 }
 

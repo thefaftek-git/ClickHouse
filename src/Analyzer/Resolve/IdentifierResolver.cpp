@@ -30,7 +30,10 @@
 #include <Analyzer/Resolve/TypoCorrection.h>
 
 #include <Core/Settings.h>
+#include <fmt/ranges.h>
+#include <Core/Joins.h>
 #include <iostream>
+#include <ranges>
 
 namespace DB
 {
@@ -51,25 +54,30 @@ namespace ErrorCodes
 
 QueryTreeNodePtr IdentifierResolver::convertJoinedColumnTypeToNullIfNeeded(
     const QueryTreeNodePtr & resolved_identifier,
+    DataTypePtr result_type,
     const JoinKind & join_kind,
     std::optional<JoinTableSide> resolved_side,
     IdentifierResolveScope & scope)
 {
-    if (resolved_identifier->getNodeType() == QueryTreeNodeType::COLUMN &&
+    if (scope.join_use_nulls &&
         JoinCommon::canBecomeNullable(resolved_identifier->getResultType()) &&
         (isFull(join_kind) ||
-        (isLeft(join_kind) && resolved_side && *resolved_side == JoinTableSide::Right) ||
-        (isRight(join_kind) && resolved_side && *resolved_side == JoinTableSide::Left)))
+        (isLeft(join_kind) && resolved_side == JoinTableSide::Right) ||
+        (isRight(join_kind) && resolved_side == JoinTableSide::Left)))
+    {
+        result_type = makeNullableOrLowCardinalityNullable(result_type);
+    }
+
+    if (result_type)
     {
         auto nullable_resolved_identifier = resolved_identifier->clone();
         auto & resolved_column = nullable_resolved_identifier->as<ColumnNode &>();
-        auto new_result_type = makeNullableOrLowCardinalityNullable(resolved_column.getColumnType());
-        resolved_column.setColumnType(new_result_type);
+        resolved_column.setColumnType(result_type);
         if (resolved_column.hasExpression())
         {
             auto & resolved_expression = resolved_column.getExpression();
-            if (!resolved_expression->getResultType()->equals(*new_result_type))
-                resolved_expression = buildCastFunction(resolved_expression, new_result_type, scope.context, true);
+            if (!resolved_expression->getResultType()->equals(*result_type))
+                resolved_expression = buildCastFunction(resolved_expression, result_type, scope.context, true);
         }
         if (!nullable_resolved_identifier->isEqual(*resolved_identifier))
             scope.join_columns_with_changed_types[nullable_resolved_identifier] = resolved_identifier;
@@ -869,15 +877,35 @@ bool resolvedIdenfiersFromJoinAreEquals(
     return left_resolved_to_compare->isEqual(*right_resolved_to_compare, IQueryTreeNode::CompareOptions{.compare_aliases = false});
 }
 
-QueryTreeNodePtr createProjectionForUsing(QueryTreeNodes arguments, const ContextPtr & context)
+QueryTreeNodePtr createProjectionForUsing(QueryTreeNodes arguments, const DataTypePtr & result_type, JoinKind join_kind, IdentifierResolveScope & scope)
 {
+    if (arguments.size() < 2)
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "Expected at least 2 arguments for USING projection, but got {}", arguments.size());
+
+    for (size_t i = 0; i < arguments.size(); ++i)
+    {
+        auto resolved_side = (i + 1 == arguments.size()) ? JoinTableSide::Right : JoinTableSide::Left;
+        auto converted_argument = IdentifierResolver::convertJoinedColumnTypeToNullIfNeeded(arguments[i], result_type, join_kind, resolved_side, scope);
+        if (converted_argument)
+            arguments[i] = converted_argument;
+    }
+
+    if (join_kind == JoinKind::Right)
+        return arguments.back();
+
+    if (join_kind != JoinKind::Full)
+        arguments.pop_back();
+
+    if (arguments.size() == 1)
+        return arguments.front();
+
     String function_name("firstTruthy");
 
     auto function_node = std::make_shared<FunctionNode>(function_name);
     function_node->getArguments().getNodes() = std::move(arguments);
 
-    auto cast_function = FunctionFactory::instance().get(function_name, context);
-    function_node->resolveAsFunction(cast_function->build(function_node->getArgumentColumns()));
+    auto merge_function = FunctionFactory::instance().get(function_name, scope.context);
+    function_node->resolveAsFunction(merge_function->build(function_node->getArgumentColumns()));
 
     return function_node;
 }
@@ -1065,13 +1093,8 @@ IdentifierResolveResult IdentifierResolver::tryResolveIdentifierFromJoin(const I
             auto & using_column_node = using_column_node_it->second->as<ColumnNode &>();
             auto & using_expression_list = using_column_node.getExpression()->as<ListNode &>();
 
-
-            auto result_column_node = createProjectionForUsing(using_expression_list.getNodes(), scope.context);
+            auto result_column_node = createProjectionForUsing(using_expression_list.getNodes(), using_column_node.getColumnType(), join_kind, scope);
             result_column_node->setAlias(identifier_lookup.identifier.getFullName());
-
-            const auto & join_using_left_column = using_expression_list.getNodes().at(0);
-            if (!result_column_node->isEqual(*join_using_left_column))
-                scope.join_columns_with_changed_types[result_column_node] = join_using_left_column;
 
             resolved_identifier = std::move(result_column_node);
         }
@@ -1144,7 +1167,8 @@ IdentifierResolveResult IdentifierResolver::tryResolveIdentifierFromJoin(const I
     if (scope.join_use_nulls)
     {
         auto projection_name_it = node_to_projection_name.find(resolved_identifier);
-        auto nullable_resolved_identifier = convertJoinedColumnTypeToNullIfNeeded(resolved_identifier, join_kind, resolved_side, scope);
+        auto nullable_resolved_identifier = convertJoinedColumnTypeToNullIfNeeded(
+            resolved_identifier, resolved_identifier->getResultType(), join_kind, resolved_side, scope);
         if (nullable_resolved_identifier)
         {
             // std::cerr << ".. convert to null " << nullable_resolved_identifier->dumpTree() << std::endl;
