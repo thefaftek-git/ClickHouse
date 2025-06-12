@@ -1241,16 +1241,21 @@ std::shared_ptr<IJoin> chooseJoinAlgorithm(
     if (auto storage = table_join->getStorageJoin())
     {
         Names required_column_names;
+        NameSet required_column_names_set;
+
         for (const auto & result_column : right_table_expression_header)
         {
             auto source_column_name_it = right_table_expression.column_mapping.find(result_column.name);
             if (source_column_name_it == right_table_expression.column_mapping.end())
+
                 throw Exception(ErrorCodes::INCOMPATIBLE_TYPE_OF_JOIN,
                     "JOIN with 'Join' table engine should be performed by storage keys [{}], but column '{}' was found",
                     fmt::join(storage->getKeyNames(), ", "), result_column.name);
 
+            // std::cerr << "Rename " << source_column_name_it->second << " -> " << result_column.name << std::endl;
             table_join->setRename(source_column_name_it->second, result_column.name);
-            required_column_names.push_back(source_column_name_it->second);
+            if (required_column_names_set.insert(source_column_name_it->second).second)
+                required_column_names.push_back(source_column_name_it->second);
         }
 
         return storage->getJoinLocked(table_join, params.initial_query_id, params.lock_acquire_timeout, required_column_names);

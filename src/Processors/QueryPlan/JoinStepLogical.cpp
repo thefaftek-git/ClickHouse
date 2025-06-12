@@ -123,9 +123,10 @@ static void addToNullableIfNeeded(
         actions_after_join.push_back(node);
 
         if (node->result_name != original_name)
-            outputs.push_back(&actions_dag->addAlias(*node, std::move(original_name)));
-        else
-            outputs.push_back(node);
+            node = &actions_dag->addAlias(*node, std::move(original_name));
+
+        outputs.push_back(node);
+        actions_after_join.push_back(node);
     }
 
     if (outputs.empty())
@@ -149,6 +150,7 @@ JoinStepLogical::JoinStepLogical(
     SortingStep::Settings sorting_settings_)
     : expression_actions(std::move(join_expression_actions_))
     , join_operator(std::move(join_operator_))
+    , use_nulls(use_nulls_)
     , join_settings(std::move(join_settings_))
     , sorting_settings(std::move(sorting_settings_))
 {
@@ -539,13 +541,19 @@ static void constructPhysicalStep(
 
     node.children.resize(1);
 
+    // std::cerr << "constructPhysicalStep" << std::endl;
     auto * join_left_node = node.children[0];
+    // std::cerr << join_left_node->step->getOutputHeader().dumpStructure() << std::endl;
     makeExpressionNodeOnTopOf(*join_left_node, std::move(left_pre_join_actions), {}, nodes, "Left Join Actions");
 
+    // std::cerr << join_left_node->step->getOutputHeader().dumpStructure() << std::endl;
+    // std::cerr << left_pre_join_actions.dumpDAG() << std::endl;
     node.step = std::make_unique<FilledJoinStep>(
         join_left_node->step->getOutputHeader(),
         join_ptr,
         join_settings.max_block_size);
+    // std::cerr << node.step->getOutputHeader().dumpStructure() << std::endl;
+    // std::cerr << post_join_actions.dumpDAG() << std::endl;
     makeExpressionNodeOnTopOf(node, std::move(post_join_actions), residual_filter_condition.first, nodes, "Post Join Actions");
 }
 
@@ -598,6 +606,7 @@ static QueryPlanNode buildPhysicalJoinImpl(
     std::vector<QueryPlanNode *> children,
     JoinOperator join_operator,
     JoinExpressionActions expression_actions,
+    bool use_nulls,
     JoinSettings join_settings,
     JoinAlgorithmParams join_algorithm_params,
     SortingStep::Settings sorting_settings,
@@ -605,11 +614,12 @@ static QueryPlanNode buildPhysicalJoinImpl(
     const QueryPlanOptimizationSettings & optimization_settings,
     QueryPlan::Nodes & nodes)
 {
-    auto table_join = std::make_shared<TableJoin>(join_settings, false,
+    auto * logical_lookup = typeid_cast<JoinStepLogicalLookup *>(children.back()->step.get());
+
+    auto table_join = std::make_shared<TableJoin>(join_settings, use_nulls && logical_lookup,
         Context::getGlobalContextInstance()->getGlobalTemporaryVolume(),
         Context::getGlobalContextInstance()->getTempDataOnDisk());
 
-    auto * logical_lookup = typeid_cast<JoinStepLogicalLookup *>(children.back()->step.get());
     PreparedJoinStorage prepared_join_storage;
     if (logical_lookup)
     {
@@ -713,22 +723,41 @@ static QueryPlanNode buildPhysicalJoinImpl(
     join_operator.residual_filter.append_range(join_expression);
     JoinActionRef residual_filter_condition = concatConditions(join_operator.residual_filter);
     std::unordered_map<const ActionsDAG::Node *, const ActionsDAG::Node *> actions_after_join_map;
-    for (const auto & action : actions_after_join)
-        actions_after_join_map[action] = action;
+    for (const auto * action : actions_after_join)
+    {
+        if (action->type == ActionsDAG::ActionType::ALIAS)
+        {
+            bool remove_right_nullable = prepared_join_storage && use_nulls && isLeftOrFull(join_operator.kind);
+            if (remove_right_nullable && JoinActionRef(action, expression_actions).fromRight())
+            {
+                /// StorageJoin should convert to nullable by itself.
+            }
+            else
+            {
+                /// x (Alias) -> toNullable(x) -> x (Input)
+                action = action->children.at(0);
+                /// toNullable(x) -> x (Input)
+            }
+        }
 
+        actions_after_join_map[action] = action;
+    }
+
+    std::vector<const ActionsDAG::Node *> required_residual_nodes;
     if (residual_filter_condition)
     {
         std::stack<const ActionsDAG::Node *> stack;
         stack.push(residual_filter_condition.getNode());
         while (!stack.empty())
         {
-            auto node = stack.top();
+            const auto * node = stack.top();
             stack.pop();
             if (node->type == ActionsDAG::ActionType::INPUT)
             {
                 if (actions_after_join_map.contains(node))
                     continue;
                 actions_after_join_map[node] = node;
+                required_residual_nodes.push_back(node);
             }
             for (const auto * child : node->children)
                 stack.push(child);
@@ -743,10 +772,25 @@ static QueryPlanNode buildPhysicalJoinImpl(
         residual_filter_condition = JoinActionRef(nullptr);
     }
 
-    for (const auto & [node, _] : actions_after_join_map)
+    for (const auto * action : actions_after_join)
     {
-        used_expressions.emplace(node, expression_actions);
+        bool remove_right_nullable = prepared_join_storage && use_nulls && isLeftOrFull(join_operator.kind);
+        if (action->type == ActionsDAG::ActionType::ALIAS)
+        {
+            if (remove_right_nullable && JoinActionRef(action, expression_actions).fromRight())
+            {
+                /// x (Alias) -> toNullable(x) -> x (Input)
+                action = action->children.at(0)->children.at(0);
+                /// toNullable(x) -> x (Input)
+            }
+            else
+                action = action->children.at(0);
+        }
+
+        used_expressions.emplace(action, expression_actions);
     }
+    for (const auto * action : required_residual_nodes)
+        used_expressions.emplace(action, expression_actions);
 
     // std::cerr << expression_actions.getActionsDAG()->dumpDAG() << std::endl;
 
@@ -801,8 +845,6 @@ static QueryPlanNode buildPhysicalJoinImpl(
     }
     else
     {
-        if (!right_dag.trivial())
-            throw Exception(ErrorCodes::LOGICAL_ERROR, "Expected right stream to be trivial, got {}", right_dag.dumpDAG());
         constructPhysicalStep(
             node, std::move(left_dag), std::move(residual_dag), std::make_pair(residual_filter_condition_name, can_remove_residual_filter),
             std::move(join_algorithm_ptr), optimization_settings, join_settings, sorting_settings, nodes);
@@ -847,6 +889,7 @@ void JoinStepLogical::buildPhysicalJoin(
         node.children,
         join_step->join_operator,
         std::move(join_step->expression_actions),
+        join_step->use_nulls,
         join_step->join_settings,
         join_algorithm_params,
         join_step->sorting_settings,
