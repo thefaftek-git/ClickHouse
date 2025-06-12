@@ -52,7 +52,7 @@ public:
         JoinOperator join_operator_,
         JoinExpressionActions join_expression_actions_,
         const NameSet & required_output_columns_,
-        const std::unordered_map<String, DataTypePtr> & changed_types,
+        const std::unordered_map<String, const ActionsDAG::Node *> & changed_types,
         bool use_nulls_,
         JoinSettings join_settings_,
         SortingStep::Settings sorting_settings_);

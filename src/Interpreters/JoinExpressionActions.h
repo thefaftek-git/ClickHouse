@@ -163,6 +163,8 @@ public:
     bool isFunction(JoinConditionOperator op) const;
     std::tuple<JoinConditionOperator, JoinActionRef, JoinActionRef> asBinaryPredicate() const;
 
+    friend bool operator==(const JoinActionRef & left, const JoinActionRef & right) { return left.node_ptr == right.node_ptr; }
+
 private:
     std::shared_ptr<JoinExpressionActions::Data> getData() const;
     static std::shared_ptr<JoinExpressionActions::Data> getData(const std::vector<JoinActionRef> & actions);

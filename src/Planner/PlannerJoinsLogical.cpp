@@ -158,7 +158,7 @@ struct JoinCondition
     }
 };
 
-std::unordered_map<String, DataTypePtr>
+std::unordered_map<String, const ActionsDAG::Node *>
 buildJoinUsingCondition(const QueryTreeNodePtr & node, JoinOperatorBuildContext & builder_context)
 {
     JoinActionRef::AddFunction operator_function(JoinConditionOperator::Equals);
@@ -168,7 +168,7 @@ buildJoinUsingCondition(const QueryTreeNodePtr & node, JoinOperatorBuildContext 
 
     auto & join_operator = builder_context.join_operator;
 
-    std::unordered_map<String, DataTypePtr> changed_types;
+    std::unordered_map<String, const ActionsDAG::Node *> changed_types;
 
     JoinActionRef::AddFunction using_concat_function(FunctionFactory::instance().get("firstTruthy", nullptr));
     for (size_t i = 0; i < num_nodes; ++i)
@@ -184,20 +184,33 @@ buildJoinUsingCondition(const QueryTreeNodePtr & node, JoinOperatorBuildContext 
                 "Using column {} expected to have at least 2 inner columns, in query tree {}",
                 using_column_node.getColumnName(), node->dumpTree());
 
-        for (const auto & inner_node : inner_columns)
-        {
-            const auto & inner_column = inner_node->as<ColumnNode &>();
+        // for (const auto & inner_node : inner_columns)
+        // {
+        //     const auto & inner_column = inner_node->as<ColumnNode &>();
 
-            const auto & table_expression_data = builder_context.planner_context->getTableExpressionDataOrThrow(inner_column.getColumnSource());
-            const auto & column_identifier = table_expression_data.getColumnIdentifierOrThrow(inner_column.getColumnName());
-            changed_types[column_identifier] = using_column_node.getResultType();
+        //     const auto & table_expression_data = builder_context.planner_context->getTableExpressionDataOrThrow(inner_column.getColumnSource());
+        //     const auto & column_identifier = table_expression_data.getColumnIdentifierOrThrow(inner_column.getColumnName());
+        //     changed_types[column_identifier] = using_column_node.getResultType();
+        // }
+
+        const auto & result_type = using_column_node.getResultType();
+        auto cast_to_super = [&result_type](auto & dag, auto && nodes) { return &dag.addCast(*nodes.at(0), result_type, {}); };
+
+        for (size_t j = 0; j < inner_columns.size(); ++j)
+        {
+            auto & arg = args.emplace_back(builder_context.addExpression(inner_columns[j]));
+            if (!arg.getType()->equals(*result_type))
+            {
+                String input_column_name = arg.getColumnName();
+                arg = JoinActionRef::transform({arg}, cast_to_super);
+                changed_types[input_column_name] = arg.getNode();
+            }
         }
 
-        for (size_t j = 0; j < inner_columns.size() - 1; ++j)
-            args.push_back(builder_context.addExpression(inner_columns[j]));
+        auto rhs = args.back();
+        args.pop_back();
 
-        auto lhs = JoinActionRef::transform(args, using_concat_function);
-        auto rhs = builder_context.addExpression(inner_columns.back());
+        auto lhs = args.size() == 1 ? args.front() : JoinActionRef::transform(args, using_concat_function);
 
         /// For ASOF join, the last column in USING list is the ASOF column
         if (join_operator.strictness == JoinStrictness::Asof && i == num_nodes - 1)
@@ -428,7 +441,7 @@ std::unique_ptr<JoinStepLogical> buildJoinStepLogical(
     const auto & query_settings = build_context.planner_context->getQueryContext()->getSettingsRef();
     const auto & join_algorithms = query_settings[Setting::join_algorithm];
 
-    std::unordered_map<String, DataTypePtr> changed_types;
+    std::unordered_map<String, const ActionsDAG::Node *> changed_types;
     /// CROSS/PASTE JOIN: doesn't have expression
     if (join_expression_node == nullptr)
     {

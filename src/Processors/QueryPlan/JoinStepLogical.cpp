@@ -91,7 +91,7 @@ static void addToNullableIfNeeded(
     bool use_nulls,
     const NameSet & required_output_columns,
     std::vector<const ActionsDAG::Node *> & actions_after_join,
-    const std::unordered_map<String, DataTypePtr> & changed_types)
+    const std::unordered_map<String, const ActionsDAG::Node *> & changed_types)
 {
     auto to_nullable = FunctionFactory::instance().get("toNullable", nullptr);
 
@@ -110,7 +110,7 @@ static void addToNullableIfNeeded(
 
         if (auto it = changed_types.find(node->result_name); it != changed_types.end())
         {
-            node = &actions_dag->addCast(*node, it->second, {});
+            node = it->second;
         }
 
         JoinActionRef input_action(node, expression_actions);
@@ -142,7 +142,7 @@ JoinStepLogical::JoinStepLogical(
     JoinOperator join_operator_,
     JoinExpressionActions join_expression_actions_,
     const NameSet & required_output_columns_,
-    const std::unordered_map<String, DataTypePtr> & changed_types,
+    const std::unordered_map<String, const ActionsDAG::Node *> & changed_types,
     bool use_nulls_,
     JoinSettings join_settings_,
     SortingStep::Settings sorting_settings_)

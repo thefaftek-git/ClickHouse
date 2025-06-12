@@ -142,7 +142,7 @@ QueryPlan decorrelateQueryPlan(
             JoinOperator(JoinKind::Cross),
             std::move(join_expression_actions),
             output_columns,
-            std::unordered_map<String, DataTypePtr>{},
+            std::unordered_map<String, const ActionsDAG::Node *>{},
             settings[Setting::join_use_nulls],
             JoinSettings(settings),
             SortingStep::Settings(settings));
@@ -387,7 +387,7 @@ QueryPlan buildLogicalJoin(
         JoinOperator(JoinKind::Left, JoinStrictness::Any, JoinLocality::Local, std::move(predicates)),
         std::move(join_expression_actions),
         output_columns,
-        std::unordered_map<String, DataTypePtr>{},
+        std::unordered_map<String, const ActionsDAG::Node *>{},
         /*join_use_nulls=*/false,
         JoinSettings(settings),
         SortingStep::Settings(settings));
