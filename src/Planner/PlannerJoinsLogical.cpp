@@ -196,9 +196,9 @@ buildJoinUsingCondition(const QueryTreeNodePtr & node, JoinOperatorBuildContext 
         const auto & result_type = using_column_node.getResultType();
         auto cast_to_super = [&result_type](auto & dag, auto && nodes) { return &dag.addCast(*nodes.at(0), result_type, {}); };
 
-        for (size_t j = 0; j < inner_columns.size(); ++j)
+        for (const auto & inner_column : inner_columns)
         {
-            auto & arg = args.emplace_back(builder_context.addExpression(inner_columns[j]));
+            auto & arg = args.emplace_back(builder_context.addExpression(inner_column));
             if (!arg.getType()->equals(*result_type))
             {
                 String input_column_name = arg.getColumnName();

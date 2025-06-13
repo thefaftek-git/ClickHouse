@@ -37,7 +37,7 @@ public:
         return std::make_shared<FunctionFirstTruthy>();
     }
 
-    explicit FunctionFirstTruthy() {}
+    FunctionFirstTruthy() = default;
 
     String getName() const override { return name; }
     bool useDefaultImplementationForConstants() const override { return true; }

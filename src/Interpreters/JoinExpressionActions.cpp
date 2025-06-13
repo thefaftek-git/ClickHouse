@@ -102,7 +102,7 @@ using NodeRawPtr = JoinExpressionActions::NodeRawPtr;
 
 BitSet getExpressionSourcesImpl(std::unordered_map<NodeRawPtr, BitSet> & expression_sources, const JoinActionRef & action)
 {
-    auto node = action.getNode();
+    const auto * node = action.getNode();
     if (auto it = expression_sources.find(node); it != expression_sources.end())
         return it->second;
 
@@ -134,7 +134,7 @@ BitSet getExpressionSourcesImpl(std::unordered_map<NodeRawPtr, BitSet> & express
             continue;
         }
 
-        auto child = current->children[child_idx];
+        const auto * child = current->children[child_idx];
         child_idx++;
 
         if (!expression_sources.contains(child))
@@ -277,16 +277,16 @@ bool JoinActionRef::isFunction(JoinConditionOperator op) const
 
 bool JoinActionRef::fromLeft() const
 {
-    auto data_ = getData();
-    auto src_rels = getExpressionSourcesImpl(data_->expression_sources, *this);
-    return src_rels.any() && isSubsetOf(src_rels, data_->lhs_rels);
+    auto data_ptr = getData();
+    auto src_rels = getExpressionSourcesImpl(data_ptr->expression_sources, *this);
+    return src_rels.any() && isSubsetOf(src_rels, data_ptr->lhs_rels);
 }
 
 bool JoinActionRef::fromRight() const
 {
-    auto data_ = getData();
-    auto src_rels = getExpressionSourcesImpl(data_->expression_sources, *this);
-    return src_rels.any() && isSubsetOf(src_rels, data_->rhs_rels);
+    auto data_ptr = getData();
+    auto src_rels = getExpressionSourcesImpl(data_ptr->expression_sources, *this);
+    return src_rels.any() && isSubsetOf(src_rels, data_ptr->rhs_rels);
 }
 
 bool JoinActionRef::fromNone() const
@@ -296,7 +296,7 @@ bool JoinActionRef::fromNone() const
 
 std::tuple<JoinConditionOperator, JoinActionRef, JoinActionRef> JoinActionRef::asBinaryPredicate() const
 {
-    auto data_ = getData();
+    auto data_ptr = getData();
     const auto * node = getNode();
     if (node->type != ActionsDAG::ActionType::FUNCTION || node->children.size() != 2)
         return {JoinConditionOperator::Unknown, nullptr, nullptr};
@@ -306,8 +306,8 @@ std::tuple<JoinConditionOperator, JoinActionRef, JoinActionRef> JoinActionRef::a
     if (op == JoinConditionOperator::Unknown)
         return {JoinConditionOperator::Unknown, nullptr, nullptr};
 
-    JoinActionRef lhs = JoinActionRef(node->children[0], data_);
-    JoinActionRef rhs = JoinActionRef(node->children[1], data_);
+    JoinActionRef lhs = JoinActionRef(node->children[0], data_ptr);
+    JoinActionRef rhs = JoinActionRef(node->children[1], data_ptr);
     return {op, lhs, rhs};
 }
 
@@ -316,18 +316,18 @@ std::vector<JoinActionRef> JoinActionRef::getArguments(bool recursive) const
     UNUSED(recursive);
     const auto * node = getNode();
     std::vector<JoinActionRef> arguments;
-    auto data_ = getData();
+    auto data_ptr = getData();
     for (const auto & child : node->children)
-        arguments.emplace_back(child, data_);
+        arguments.emplace_back(child, data_ptr);
     return arguments;
 }
 
 std::shared_ptr<JoinExpressionActions::Data> JoinActionRef::getData() const
 {
-    auto data_ = data.lock();
-    if (!data_)
+    auto data_ptr = data.lock();
+    if (!data_ptr)
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Cannot get data for JoinActionRef");
-    return data_;
+    return data_ptr;
 }
 
 std::shared_ptr<JoinExpressionActions::Data> JoinActionRef::getData(const std::vector<JoinActionRef> & actions)
@@ -335,13 +335,13 @@ std::shared_ptr<JoinExpressionActions::Data> JoinActionRef::getData(const std::v
     if (actions.empty())
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Cannot get actions DAG for empty actions");
 
-    auto data_ = actions.front().getData();
+    auto data_ptr = actions.front().getData();
     for (const auto & action : actions)
     {
-        if (data_.get() != action.getData().get())
+        if (data_ptr.get() != action.getData().get())
             throw Exception(ErrorCodes::LOGICAL_ERROR, "All actions must have the same actions DAG");
     }
-    return data_;
+    return data_ptr;
 }
 
 ActionsDAG & JoinActionRef::getActionsDAG(JoinExpressionActions::Data & data_)

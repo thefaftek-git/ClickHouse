@@ -311,9 +311,9 @@ bool addJoinPredicatesToTableJoin(std::vector<JoinActionRef> & predicates, Table
     // std::cerr << "addJoinPredicatesToTableJoin" << std::endl;
     bool has_join_predicates = false;
     std::vector<JoinActionRef> new_predicates;
-    for (size_t i = 0; i < predicates.size(); ++i)
+    for (auto & pred : predicates)
     {
-        auto & predicate = new_predicates.emplace_back(std::move(predicates[i]));
+        auto & predicate = new_predicates.emplace_back(std::move(pred));
         // std::cerr << "Predicate: " << predicate.getColumnName() << std::endl;
         auto [predicate_op, lhs, rhs] = predicate.asBinaryPredicate();
         if (predicate_op != JoinConditionOperator::Equals && predicate_op != JoinConditionOperator::NullSafeEquals)
@@ -411,7 +411,7 @@ bool tryAddDisjunctiveConditions(
 
     std::vector<JoinActionRef> disjunctive_conditions = join_expression.getArguments();
     bool has_residual_condition = false;
-    for (auto expr : disjunctive_conditions)
+    for (const auto & expr : disjunctive_conditions)
     {
         std::vector<JoinActionRef> join_condition = {expr};
         if (expr.isFunction(JoinConditionOperator::And))
@@ -764,7 +764,7 @@ static QueryPlanNode buildPhysicalJoinImpl(
 
     if (residual_filter_condition && (is_disjunctive_condition || !canPushDownFromOn(join_operator)))
     {
-        auto residual_filter_dag = expression_actions.getSubDAG(std::views::single(residual_filter_condition));
+        auto residual_filter_dag = JoinExpressionActions::getSubDAG(std::views::single(residual_filter_condition));
         ExpressionActionsPtr & mixed_join_expression = table_join->getMixedJoinExpression();
         mixed_join_expression = std::make_shared<ExpressionActions>(std::move(residual_filter_dag), optimization_settings.actions_settings);
         residual_filter_condition = JoinActionRef(nullptr);
@@ -792,8 +792,8 @@ static QueryPlanNode buildPhysicalJoinImpl(
 
     // std::cerr << expression_actions.getActionsDAG()->dumpDAG() << std::endl;
 
-    ActionsDAG left_dag = expression_actions.getSubDAG(used_expressions | std::views::filter([](const auto & node) { return node.fromLeft() || node.fromNone(); }));
-    ActionsDAG right_dag = expression_actions.getSubDAG(used_expressions | std::views::filter([](const auto & node) { return node.fromRight(); }));
+    ActionsDAG left_dag = JoinExpressionActions::getSubDAG(used_expressions | std::views::filter([](const auto & node) { return node.fromLeft() || node.fromNone(); }));
+    ActionsDAG right_dag = JoinExpressionActions::getSubDAG(used_expressions | std::views::filter([](const auto & node) { return node.fromRight(); }));
 
     // std::cerr << left_dag.dumpDAG() << std::endl;
     // std::cerr << right_dag.dumpDAG() << std::endl;
@@ -969,11 +969,12 @@ std::unique_ptr<IQueryPlanStep> JoinStepLogical::deserialize(Deserialization & c
 
     auto left_header = ctx.input_headers.front();
     auto right_header = ctx.input_headers.back();
+    auto id_to_node_map = actions_dag.getIdToNodeMap();
     JoinExpressionActions expression_actions(left_header, right_header, std::move(actions_dag));
 
     auto join_operator = JoinOperator::deserialize(ctx.in, expression_actions);
 
-    auto actions_after_join = ActionsDAG::deserializeNodeList(ctx.in, actions_dag.getIdToNodeMap());
+    auto actions_after_join = ActionsDAG::deserializeNodeList(ctx.in, id_to_node_map);
 
     SortingStep::Settings sort_settings(ctx.settings);
     JoinSettings join_settings(ctx.settings);
@@ -1004,9 +1005,9 @@ QueryPlanStepPtr JoinStepLogical::clone() const
     return result_step;
 }
 
-void JoinStepLogical::addConditions(ActionsDAG::NodeRawConstPtrs condition_nodes)
+void JoinStepLogical::addConditions(ActionsDAG::NodeRawConstPtrs conditions)
 {
-    for (const auto * node : condition_nodes)
+    for (const auto * node : conditions)
         join_operator.expression.emplace_back(node, expression_actions);
 }
 

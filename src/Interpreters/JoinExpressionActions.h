@@ -128,7 +128,7 @@ public:
     class AddFunction
     {
     public:
-        explicit AddFunction(JoinConditionOperator function_ptr_);
+        explicit AddFunction(JoinConditionOperator op);
         explicit AddFunction(FunctionOverloadResolverPtr function_ptr_);
         explicit AddFunction(std::shared_ptr<IFunction> function_);
 
@@ -140,9 +140,9 @@ public:
     template <typename F>
     static JoinActionRef transform(const std::vector<JoinActionRef> & actions, F && func)
     {
-        auto data_ = getData(actions);
+        auto data_ptr = getData(actions);
         auto nodes = std::ranges::to<std::vector>(actions | std::views::transform([](const auto & action) { return action.getNode(); }));
-        return JoinActionRef(func(getActionsDAG(*data_), std::move(nodes)), data_);
+        return JoinActionRef(func(getActionsDAG(*data_ptr), std::move(nodes)), data_ptr);
     }
 
     NodeRawPtr getNode() const;
