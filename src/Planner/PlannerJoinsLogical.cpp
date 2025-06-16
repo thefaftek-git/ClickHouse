@@ -205,6 +205,9 @@ buildJoinUsingCondition(const QueryTreeNodePtr & node, JoinOperatorBuildContext 
                 arg = JoinActionRef::transform({arg}, cast_to_super);
                 changed_types[input_column_name] = arg.getNode();
             }
+
+            if (arg.fromNone())
+                arg.setSourceRelations(BitSet().set(0));
         }
 
         auto rhs = args.back();

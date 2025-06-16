@@ -23,6 +23,10 @@ struct JoinOperator
 
     /// An expression in ON/USING clause of a JOIN statement
     std::vector<JoinActionRef> expression = {};
+    /// Additional filter after join (e.g. from WHERE clause)
+    /// Difference is for OUTER JOINs, where expression used to match row or return NULL
+    /// but residual filter is used to filter rows after join.
+    /// For INNER JOINs, residual filter is the same as expression
     std::vector<JoinActionRef> residual_filter = {};
 
     explicit JoinOperator(

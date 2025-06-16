@@ -131,7 +131,6 @@ namespace ErrorCodes
     extern const int ILLEGAL_TYPE_OF_ARGUMENT;
     extern const int MULTIPLE_EXPRESSIONS_FOR_ALIAS;
     extern const int TYPE_MISMATCH;
-    extern const int AMBIGUOUS_IDENTIFIER;
     extern const int INVALID_WITH_FILL_EXPRESSION;
     extern const int INVALID_LIMIT_EXPRESSION;
     extern const int EMPTY_LIST_OF_COLUMNS_QUERIED;
@@ -274,12 +273,7 @@ std::optional<JoinTableSide> QueryAnalyzer::getColumnSideFromJoinTree(const Quer
         {
             auto table_side = getColumnSideFromJoinTree(argument_node, join_node);
             if (table_side && result && *table_side != *result)
-            {
-                throw Exception(ErrorCodes::AMBIGUOUS_IDENTIFIER,
-                    "Ambiguous identifier {}. In scope {}",
-                    resolved_identifier->formatASTForErrorMessage(),
-                    join_node.formatASTForErrorMessage());
-            }
+                return {};
             result = table_side;
         }
         return result;
@@ -2252,6 +2246,8 @@ ProjectionNames QueryAnalyzer::resolveMatcher(QueryTreeNodePtr & matcher_node, I
             for (auto & [node, node_name] : matched_expression_nodes_with_names)
             {
                 auto join_identifier_side = getColumnSideFromJoinTree(node, *nearest_scope_join_node);
+                if (!join_identifier_side)
+                    continue;
                 auto projection_name_it = node_to_projection_name.find(node);
                 auto nullable_node = IdentifierResolver::convertJoinedColumnTypeToNullIfNeeded(node, node->getResultType(), nearest_scope_join_node->getKind(), join_identifier_side, scope);
                 if (nullable_node)

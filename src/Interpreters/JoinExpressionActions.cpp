@@ -171,7 +171,9 @@ JoinActionRef::JoinActionRef(NodeRawPtr node_, JoinExpressionActions & expressio
 
 const ActionsDAG::Node * JoinActionRef::getNode() const
 {
-    if (data.expired() || !node_ptr)
+    if (!node_ptr)
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "Cannot get node for nullptr");
+    if (data.expired())
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Pointer to actions DAG is expired");
     return node_ptr;
 }
@@ -236,6 +238,27 @@ JoinExpressionActions JoinExpressionActions::clone(std::vector<JoinActionRef> & 
 BitSet JoinActionRef::getSourceRelations() const
 {
     return getExpressionSourcesImpl(getData()->expression_sources, *this);
+}
+
+void JoinActionRef::setSourceRelations(const BitSet & source_relations) const
+{
+    auto data_ptr = getData();
+
+    const auto * node = getNode();
+    std::stack<const ActionsDAG::Node *> stack;
+    stack.push(node);
+
+    auto & expression_sources = data_ptr->expression_sources;
+    while (!stack.empty())
+    {
+        const auto * current = stack.top();
+        stack.pop();
+        if (expression_sources[current] == source_relations)
+            break;
+        expression_sources[current] = source_relations;
+        for (const auto * child : current->children)
+            stack.push(child);
+    }
 }
 
 std::string operatorToFunctionName(JoinConditionOperator op)

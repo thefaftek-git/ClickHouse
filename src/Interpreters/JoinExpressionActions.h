@@ -29,11 +29,12 @@ class BitSet
 public:
     BitSet() = default;
 
-    void set(size_t pos)
+    BitSet & set(size_t pos)
     {
         if (pos >= bitset.size())
             bitset.resize(pos + 1);
         bitset.set(pos);
+        return *this;
     }
 
     bool any() const { return bitset.any(); }
@@ -155,6 +156,7 @@ public:
 
     std::vector<JoinActionRef> getArguments(bool recursive = false) const;
 
+    void setSourceRelations(const BitSet & source_relations) const;
     BitSet getSourceRelations() const;
     bool fromLeft() const;
     bool fromRight() const;

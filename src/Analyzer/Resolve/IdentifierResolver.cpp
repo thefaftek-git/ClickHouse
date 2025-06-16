@@ -59,6 +59,9 @@ QueryTreeNodePtr IdentifierResolver::convertJoinedColumnTypeToNullIfNeeded(
     std::optional<JoinTableSide> resolved_side,
     IdentifierResolveScope & scope)
 {
+    if (resolved_identifier->getNodeType() != QueryTreeNodeType::COLUMN)
+        return resolved_identifier;
+
     if (scope.join_use_nulls &&
         JoinCommon::canBecomeNullable(resolved_identifier->getResultType()) &&
         (isFull(join_kind) ||
