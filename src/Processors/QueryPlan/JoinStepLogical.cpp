@@ -630,6 +630,26 @@ static QueryPlanNode buildPhysicalJoinImpl(
 
     auto & join_expression = join_operator.expression;
 
+    if (join_expression.empty() || (join_expression.size() == 1 && !join_expression[0]))
+    {
+        bool rhs_value = join_expression.empty() ? 1 : 0;
+        join_expression.clear();
+
+        auto actions_dag = expression_actions.getActionsDAG();
+
+        auto dt = std::make_shared<DataTypeUInt8>();
+
+        ColumnWithTypeAndName lhs_column(dt->createColumnConst(1, 1), dt, "__lhs_const");
+        JoinActionRef lhs(&actions_dag->addColumn(lhs_column), expression_actions);
+        lhs.setSourceRelations(BitSet().set(0));
+
+        ColumnWithTypeAndName rhs_column(dt->createColumnConst(1, rhs_value), dt, "__rhs_const");
+        JoinActionRef rhs(&actions_dag->addColumn(rhs_column), expression_actions);
+        rhs.setSourceRelations(BitSet().set(1));
+
+        join_expression.push_back(JoinActionRef::transform({lhs, rhs}, JoinActionRef::AddFunction(JoinConditionOperator::Equals)));
+    }
+
     std::unordered_set<JoinActionRef> used_expressions;
 
     bool is_disjunctive_condition = false;
