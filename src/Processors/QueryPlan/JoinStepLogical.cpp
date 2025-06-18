@@ -630,7 +630,9 @@ static QueryPlanNode buildPhysicalJoinImpl(
 
     auto & join_expression = join_operator.expression;
 
-    if (join_expression.empty() || (join_expression.size() == 1 && !join_expression[0]))
+    bool is_join_without_expression = isCrossOrComma(join_operator.kind) || isPaste(join_operator.kind);
+    if ((!is_join_without_expression && join_expression.empty()) ||
+        (join_expression.size() == 1 && !join_expression[0]))
     {
         bool rhs_value = join_expression.empty() ? 1 : 0;
         join_expression.clear();
@@ -654,7 +656,7 @@ static QueryPlanNode buildPhysicalJoinImpl(
 
     bool is_disjunctive_condition = false;
     auto & table_join_clauses = table_join->getClauses();
-    if (!isCrossOrComma(join_operator.kind) && !isPaste(join_operator.kind))
+    if (!is_join_without_expression)
     {
         bool has_keys = addJoinPredicatesToTableJoin(join_expression, table_join_clauses.emplace_back(), used_expressions);
 
@@ -1025,8 +1027,10 @@ QueryPlanStepPtr JoinStepLogical::clone() const
     return result_step;
 }
 
-void JoinStepLogical::addConditions(ActionsDAG::NodeRawConstPtrs conditions)
+void JoinStepLogical::addConditions(ActionsDAG actions_dag)
 {
+    ActionsDAG::NodeRawConstPtrs conditions;
+    expression_actions.getActionsDAG()->mergeNodes(std::move(actions_dag), &conditions);
     for (const auto * node : conditions)
         join_operator.expression.emplace_back(node, expression_actions);
 }

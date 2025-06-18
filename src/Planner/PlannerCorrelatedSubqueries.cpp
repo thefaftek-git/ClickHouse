@@ -374,8 +374,8 @@ QueryPlan buildLogicalJoin(
     for (const auto & column_name : correlated_subquery.correlated_column_identifiers)
     {
         std::vector<JoinActionRef> eq_arguments;
-        eq_arguments.push_back(join_expression_actions.findNode(column_name));
-        eq_arguments.push_back(join_expression_actions.findNode(fmt::format("{}.{}", correlated_subquery.action_node_name, column_name)));
+        eq_arguments.push_back(join_expression_actions.findNode(column_name, /* is_input= */ true));
+        eq_arguments.push_back(join_expression_actions.findNode(fmt::format("{}.{}", correlated_subquery.action_node_name, column_name), /* is_input= */ true));
         auto eq_node = JoinActionRef::transform(eq_arguments, JoinActionRef::AddFunction(JoinConditionOperator::Equals));
         predicates.push_back(std::move(eq_node));
     }

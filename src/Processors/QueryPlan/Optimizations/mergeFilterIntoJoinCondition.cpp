@@ -336,7 +336,7 @@ size_t tryMergeFilterIntoJoinCondition(QueryPlan::Node * parent_node, QueryPlan:
     if (equality_predicates.empty())
         return 0;
 
-    join_step->addConditions(std::move(equality_predicates));
+    join_step->addConditions(ActionsDAG::cloneSubDAG(equality_predicates, false));
 
     if (kind == JoinKind::Cross || kind == JoinKind::Comma)
         join_operator.kind = JoinKind::Inner;

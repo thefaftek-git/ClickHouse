@@ -121,7 +121,7 @@ public:
         return expression_actions.getActionsDAG()->hasCorrelatedColumns();
     }
 
-    void addConditions(ActionsDAG::NodeRawConstPtrs conditions);
+    void addConditions(ActionsDAG actions_dag);
     std::optional<ActionsDAG> getFilterActions(JoinTableSide side, String & filter_column_name);
 
     static void buildPhysicalJoin(
