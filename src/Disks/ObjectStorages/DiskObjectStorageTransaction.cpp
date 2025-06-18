@@ -626,6 +626,8 @@ struct TruncateFileObjectStorageOperation final : public IDiskObjectStorageOpera
         if (!truncate_outcome)
             return;
 
+        chassert(truncate_outcome->objects_to_remove.empty(), "Lets see when it works");
+
         if (!truncate_outcome->objects_to_remove.empty())
             object_storage.removeObjectsIfExist(truncate_outcome->objects_to_remove);
     }
