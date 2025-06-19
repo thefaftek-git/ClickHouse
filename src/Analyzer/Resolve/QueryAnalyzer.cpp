@@ -3610,11 +3610,27 @@ ProjectionNames QueryAnalyzer::resolveFunction(QueryTreeNodePtr & node, Identifi
         else
             function_base = function->build(argument_columns);
 
+        bool allow_constant_folding = true;
+
+        auto * nearest_join_query_scope = scope.joins_count > 0 ? scope.getNearestQueryScope() : nullptr;
+        auto * nearest_join_query_scope_query_node = nearest_join_query_scope ? nearest_join_query_scope->scope_node->as<QueryNode>() : nullptr;
+        const auto * join_node = nearest_join_query_scope_query_node ? nearest_join_query_scope_query_node->getJoinTree()->as<JoinNode>() : nullptr;
+        if (join_node && join_node->getStrictness() == JoinStrictness::Asof &&
+            scope.expressions_in_resolve_process_stack.has(join_node->getJoinExpression().get()))
+        {
+            /// Disable constant folding for ASOF JOIN ON expressions.
+            /// In ASOF JOIN, comparison functions like >= or <= are not evaluated normally.
+            /// They instead indicate which columns should be used for finding the closest matching rows.
+            /// Even though whole expression is constant, code handling ASOF JOIN may expect presence of comparison function,
+            /// and consider query as malformed if we replace it to constant.
+            allow_constant_folding = false;
+        }
+
         /** If function is suitable for constant folding try to convert it to constant.
           * Example: SELECT plus(1, 1);
           * Result: SELECT 2;
           */
-        if (function_base->isSuitableForConstantFolding())
+        if (allow_constant_folding && function_base->isSuitableForConstantFolding())
         {
             auto result_type = function_base->getResultType();
             auto executable_function = function_base->prepare(argument_columns);

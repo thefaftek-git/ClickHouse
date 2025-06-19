@@ -669,7 +669,7 @@ static QueryPlanNode buildPhysicalJoinImpl(
     {
         bool has_keys = addJoinPredicatesToTableJoin(join_expression, table_join_clauses.emplace_back(), used_expressions);
 
-        if (!has_keys)
+        if (!has_keys && join_operator.strictness != JoinStrictness::Asof)
         {
             bool can_convert_to_cross = (isInner(join_operator.kind) || isCrossOrComma(join_operator.kind))
                 && TableJoin::isEnabledAlgorithm(join_settings.join_algorithms, JoinAlgorithm::HASH)

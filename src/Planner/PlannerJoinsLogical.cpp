@@ -80,6 +80,8 @@ const ActionsDAG::Node * appendExpression(
     const QueryTreeNodePtr & expression,
     const PlannerContextPtr & planner_context)
 {
+    size_t input_count = dag.getInputs().size();
+
     ColumnNodePtrWithHashSet empty_correlated_columns_set;
     PlannerActionsVisitor join_expression_visitor(planner_context, empty_correlated_columns_set);
     auto [join_expression_dag_node_raw_pointers, correlated_subtrees] = join_expression_visitor.visit(dag, expression);
@@ -90,7 +92,11 @@ const ActionsDAG::Node * appendExpression(
             "Expression {} expected be a single node, got {}",
             expression->formatASTForErrorMessage(), dag.dumpDAG());
 
-    dag.addOrReplaceInOutputs(*join_expression_dag_node_raw_pointers[0]);
+    if (input_count != dag.getInputs().size())
+        throw Exception(ErrorCodes::LOGICAL_ERROR,
+            "Unknown inputs added to actions dag:\n{}\nAfter adding expression {} with query tree node:\n{}",
+            dag.dumpDAG(), expression->formatASTForErrorMessage(), expression->dumpTree());
+
     return join_expression_dag_node_raw_pointers[0];
 }
 
