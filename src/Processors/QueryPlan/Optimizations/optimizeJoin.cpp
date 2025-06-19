@@ -264,8 +264,10 @@ optimizeJoinLogical(QueryPlan::Node & node, QueryPlan::Nodes &, const QueryPlanO
     if (!join_step)
         return {};
 
-    if (typeid_cast<JoinStepLogicalLookup *>(node.children.back()->step.get())) //join_step->hasPreparedJoinStorage())
-        return {};
+    if (auto * lookup_step = typeid_cast<JoinStepLogicalLookup *>(node.children.back()->step.get()))
+    {
+        return lookup_step->optimize(optimization_settings);
+    }
 
     if (node.children.size() != 2)
         throw Exception(ErrorCodes::LOGICAL_ERROR, "JoinStepLogical should have exactly 2 children, but has {}", node.children.size());

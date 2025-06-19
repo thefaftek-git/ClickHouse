@@ -161,15 +161,19 @@ protected:
 class JoinStepLogicalLookup final : public ISourceStep
 {
 public:
-    JoinStepLogicalLookup(Block header, PreparedJoinStorage prepared_join_storage_);
+    JoinStepLogicalLookup(QueryPlan child_plan_, PreparedJoinStorage prepared_join_storage_);
 
     void initializePipeline(QueryPipelineBuilder &, const BuildQueryPipelineSettings &) override;
     String getName() const override { return "JoinStepLogicalLookup"; }
 
     PreparedJoinStorage & getPreparedJoinStorage() { return prepared_join_storage; }
 
+    std::optional<UInt64> optimize(const QueryPlanOptimizationSettings & optimization_settings);
 private:
     PreparedJoinStorage prepared_join_storage;
+
+    bool optimized = false;
+    QueryPlan child_plan;
 };
 
 }

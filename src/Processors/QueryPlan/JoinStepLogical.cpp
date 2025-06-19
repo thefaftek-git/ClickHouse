@@ -239,17 +239,26 @@ void JoinStepLogical::updateOutputHeader()
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Output header is empty, actions_dag: {}", actions_dag->dumpDAG());
 }
 
-JoinStepLogicalLookup::JoinStepLogicalLookup(Block header, PreparedJoinStorage prepared_join_storage_)
-    : ISourceStep(std::move(header))
+JoinStepLogicalLookup::JoinStepLogicalLookup(QueryPlan child_plan_, PreparedJoinStorage prepared_join_storage_)
+    : ISourceStep(child_plan_.getCurrentHeader())
     , prepared_join_storage(std::move(prepared_join_storage_))
+    , child_plan(std::move(child_plan_))
 {
 }
 
-void JoinStepLogicalLookup::initializePipeline(QueryPipelineBuilder &, const BuildQueryPipelineSettings &)
+void JoinStepLogicalLookup::initializePipeline(QueryPipelineBuilder & pipeline_builder, const BuildQueryPipelineSettings & build_pipeline_settings)
 {
-    throw Exception(
-        ErrorCodes::NOT_IMPLEMENTED,
-        "Cannot read from {} step. This step should be optimized to FilledJoin step.", getName());
+    QueryPlanOptimizationSettings optimization_settings({}, {}, {}, {}, {});
+    pipeline_builder = std::move(*child_plan.buildQueryPipeline(optimization_settings, build_pipeline_settings, /* do_optimize */ false));
+}
+
+std::optional<UInt64> JoinStepLogicalLookup::optimize(const QueryPlanOptimizationSettings & optimization_settings)
+{
+    if (optimized)
+        return {};
+    optimized = true;
+    child_plan.optimize(optimization_settings);
+    return 1;
 }
 
 /// When we have an expression like `a AND b`, it can work even when `a` and `b` are non-boolean values,
