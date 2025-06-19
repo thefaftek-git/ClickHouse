@@ -632,7 +632,7 @@ static QueryPlanNode buildPhysicalJoinImpl(
 
     bool is_join_without_expression = isCrossOrComma(join_operator.kind) || isPaste(join_operator.kind);
     if ((!is_join_without_expression && join_expression.empty()) ||
-        (join_expression.size() == 1 && !join_expression[0]))
+        (join_expression.size() == 1 && join_expression[0].getType()->onlyNull()))
     {
         bool rhs_value = join_expression.empty() ? 1 : 0;
         join_expression.clear();
@@ -813,6 +813,15 @@ static QueryPlanNode buildPhysicalJoinImpl(
         used_expressions.emplace(action, expression_actions);
 
     // std::cerr << expression_actions.getActionsDAG()->dumpDAG() << std::endl;
+
+    for (const auto * child : children)
+    {
+        for (const auto & column : child->step->getOutputHeader())
+        {
+            auto input_node = expression_actions.findNode(column.name, /* is_input */ true);
+            used_expressions.insert(std::move(input_node));
+        }
+    }
 
     ActionsDAG left_dag = JoinExpressionActions::getSubDAG(used_expressions | std::views::filter([](const auto & node) { return node.fromLeft() || node.fromNone(); }));
     ActionsDAG right_dag = JoinExpressionActions::getSubDAG(used_expressions | std::views::filter([](const auto & node) { return node.fromRight(); }));

@@ -52,7 +52,10 @@
 #include <Core/Settings.h>
 #include <Core/ServerSettings.h>
 #include <Interpreters/JoinOperator.h>
+#include <DataTypes/DataTypeNothing.h>
+#include <DataTypes/DataTypeNullable.h>
 
+#include <memory>
 #include <stack>
 
 namespace DB
@@ -479,7 +482,14 @@ std::unique_ptr<JoinStepLogical> buildJoinStepLogical(
 
         bool join_expression_value = join_expression_constant.value();
         if (!join_expression_value)
-            build_context.join_operator.expression.push_back(JoinActionRef(nullptr));
+        {
+            auto actions_dag = build_context.expression_actions.getActionsDAG();
+            auto nothing_type = std::make_shared<DataTypeNullable>(std::make_shared<DataTypeNothing>());
+            ColumnWithTypeAndName null_column(nothing_type->createColumnConstWithDefaultValue(1), nothing_type, "NULL");
+            JoinActionRef null_action(&actions_dag->addColumn(null_column), build_context.expression_actions);
+            null_action.setSourceRelations(BitSet().set(0).set(1));
+            build_context.join_operator.expression.push_back(null_action);
+        }
     }
 
     const auto & settings = planner_context->getQueryContext()->getSettingsRef();
