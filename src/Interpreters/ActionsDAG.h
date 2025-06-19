@@ -467,6 +467,8 @@ public:
     UInt64 getHash() const;
     void updateHash(SipHash & hash_state) const;
 
+    static std::optional<ActionsForFilterPushDown> createActionsForConjunction(NodeRawConstPtrs conjunction, const ColumnsWithTypeAndName & all_inputs);
+
 private:
     NodeRawConstPtrs getParents(const Node * target) const;
 
@@ -483,8 +485,6 @@ private:
 #if USE_EMBEDDED_COMPILER
     void compileFunctions(size_t min_count_to_compile_expression, const std::unordered_set<const Node *> & lazy_executed_nodes = {});
 #endif
-
-    static std::optional<ActionsForFilterPushDown> createActionsForConjunction(NodeRawConstPtrs conjunction, const ColumnsWithTypeAndName & all_inputs);
 
     void removeUnusedConjunctions(NodeRawConstPtrs rejected_conjunctions, Node * predicate, bool removes_filter);
 };

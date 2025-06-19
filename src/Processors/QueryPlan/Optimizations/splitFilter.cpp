@@ -15,21 +15,20 @@ size_t trySplitJoin(QueryPlan::Node * node, QueryPlan::Nodes & nodes)
         return 0;
 
     size_t num_new_nodes = 0;
-
-    String filter_coumn_name;
-
-    if (auto fitler_dag = join_step->getFilterActions(JoinTableSide::Left, filter_coumn_name))
+    for (auto [idx, side]: {std::make_pair(0, JoinTableSide::Left), std::make_pair(1, JoinTableSide::Right)})
     {
-        auto & child_node = *node->children.at(0);
-        if (makeExpressionNodeOnTopOf(child_node, std::move(*fitler_dag), filter_coumn_name, nodes, "Join filter"))
-            num_new_nodes++;
-    }
+        auto & child_node = *node->children.at(idx);
+        const auto & header = child_node.step->getOutputHeader();
+        auto fitler_dag = join_step->getFilterActions(side, header);
+        if (!fitler_dag)
+            continue;
+        const auto & filter_column_name = fitler_dag->dag.getOutputs()[fitler_dag->filter_pos]->result_name;
+        QueryPlanStepPtr step = std::make_unique<FilterStep>(header, std::move(fitler_dag->dag), filter_column_name, fitler_dag->remove_filter);
+        step->setStepDescription("Join filter");
 
-    if (auto fitler_dag = join_step->getFilterActions(JoinTableSide::Right, filter_coumn_name))
-    {
-        auto & child_node = *node->children.at(1);
-        if (makeExpressionNodeOnTopOf(child_node, std::move(*fitler_dag), filter_coumn_name, nodes, "Join filter"))
-            num_new_nodes++;
+        auto * new_node = &nodes.emplace_back(std::move(child_node));
+        child_node = QueryPlan::Node{std::move(step), {new_node}};
+        num_new_nodes++;
     }
     return num_new_nodes;
 }

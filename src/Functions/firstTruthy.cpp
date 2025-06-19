@@ -137,7 +137,23 @@ public:
 
 REGISTER_FUNCTION(FirstTruthy)
 {
-    factory.registerFunction<FunctionFirstTruthy>({}, FunctionFactory::Case::Insensitive);
+    FunctionDocumentation doc;
+    doc.description = "Returns the first non-falsey value from a set of arguments";
+    doc.arguments = {
+        {"arg1", "The first argument to check"},
+        {"arg2", "The second argument to check"},
+        {"...", "Additional arguments to check"},
+    };
+    doc.returned_value = "Result type is the supertype of all arguments";
+    doc.examples = {
+        {"integers", "SELECT firstTruthy(0, 1, 2)", "1"},
+        {"strings", "SELECT firstTruthy('', 'hello', 'world')", "'hello'"},
+        {"nulls", "SELECT firstTruthy(NULL, 0 :: UInt8, 1 :: UInt8)", "1"},
+        {"nullable zero", "SELECT firstTruthy(NULL, 0 :: Nullable(UInt8), 1 :: Nullable(UInt8))", "0"},
+    };
+
+    doc.introduced_in = {25, 7};
+    factory.registerFunction<FunctionFirstTruthy>(doc, FunctionFactory::Case::Insensitive);
 }
 
 }

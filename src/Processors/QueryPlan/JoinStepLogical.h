@@ -122,7 +122,7 @@ public:
     }
 
     void addConditions(ActionsDAG actions_dag);
-    std::optional<ActionsDAG> getFilterActions(JoinTableSide side, String & filter_column_name);
+    std::optional<ActionsDAG::ActionsForFilterPushDown> getFilterActions(JoinTableSide side, const Header & stream_header);
 
     static void buildPhysicalJoin(
         QueryPlan::Node & node,

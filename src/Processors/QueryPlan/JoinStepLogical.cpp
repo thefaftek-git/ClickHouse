@@ -643,7 +643,7 @@ static QueryPlanNode buildPhysicalJoinImpl(
     if ((!is_join_without_expression && join_expression.empty()) ||
         (join_expression.size() == 1 && join_expression[0].getType()->onlyNull()))
     {
-        bool rhs_value = join_expression.empty() ? 1 : 0;
+        UInt8 rhs_value = join_expression.empty() ? 1 : 0;
         join_expression.clear();
 
         auto actions_dag = expression_actions.getActionsDAG();
@@ -938,7 +938,7 @@ void JoinStepLogical::buildPhysicalJoin(
     node = std::move(new_node);
 }
 
-std::optional<ActionsDAG> JoinStepLogical::getFilterActions(JoinTableSide side, String & filter_column_name)
+std::optional<ActionsDAG::ActionsForFilterPushDown> JoinStepLogical::getFilterActions(JoinTableSide side, const Header & stream_header)
 {
     if (join_operator.strictness != JoinStrictness::All)
         return {};
@@ -950,19 +950,10 @@ std::optional<ActionsDAG> JoinStepLogical::getFilterActions(JoinTableSide side, 
 
     if (auto filter_condition = concatConditions(join_expression, side))
     {
+        auto filter_to_push_down = ActionsDAG::createActionsForConjunction({filter_condition.getNode()}, stream_header.getColumnsWithTypeAndName());
+        return filter_to_push_down;
+
         // TODO: try use `createActionsForConjunction`
-        filter_column_name = filter_condition.getColumnName();
-        ActionsDAG new_dag = JoinExpressionActions::getSubDAG(filter_condition);
-        if (new_dag.getOutputs().size() != 1)
-            throw Exception(ErrorCodes::LOGICAL_ERROR, "Expected 1 output column, got {}", new_dag.getOutputs().size());
-
-        const auto & inputs = new_dag.getInputs();
-        auto & outputs = new_dag.getOutputs();
-        if (std::ranges::contains(inputs, outputs.front()))
-            outputs.clear();
-        outputs.append_range(inputs);
-
-        return std::move(new_dag);
     }
 
     return {};
