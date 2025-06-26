@@ -30,7 +30,7 @@ struct JoinOperator
     std::vector<JoinActionRef> residual_filter = {};
 
     explicit JoinOperator(
-        JoinKind kind_,
+        JoinKind kind_ = JoinKind::Cross,
         JoinStrictness strictness_ = JoinStrictness::All,
         JoinLocality locality_ = JoinLocality::Local,
         std::vector<JoinActionRef> expression_ = {})

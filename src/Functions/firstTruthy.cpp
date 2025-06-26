@@ -151,6 +151,7 @@ REGISTER_FUNCTION(FirstTruthy)
         {"nulls", "SELECT firstTruthy(NULL, 0 :: UInt8, 1 :: UInt8)", "1"},
         {"nullable zero", "SELECT firstTruthy(NULL, 0 :: Nullable(UInt8), 1 :: Nullable(UInt8))", "0"},
     };
+    doc.category = {FunctionDocumentation::Category::Nullable};
 
     doc.introduced_in = {25, 7};
     factory.registerFunction<FunctionFirstTruthy>(doc, FunctionFactory::Case::Insensitive);

@@ -2166,6 +2166,8 @@ JoinTreeQueryPlan buildQueryPlanForJoinNode(
     if (prepared_join)
     {
         auto join_lookup_step = std::make_unique<JoinStepLogicalLookup>(std::move(right_join_tree_query_plan.query_plan), std::move(prepared_join));
+        if (settings[Setting::join_use_nulls])
+            join_lookup_step->setUseNulls();
         right_join_tree_query_plan.query_plan = {};
         right_join_tree_query_plan.query_plan.addStep(std::move(join_lookup_step));
     }

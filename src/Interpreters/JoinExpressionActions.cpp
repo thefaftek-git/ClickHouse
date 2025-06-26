@@ -38,6 +38,34 @@ std::string_view toString(JoinConditionOperator op)
     throw Exception(ErrorCodes::LOGICAL_ERROR, "Illegal value for JoinConditionOperator: {}", static_cast<Int32>(op));
 }
 
+
+String toString(const BitSet & bs)
+{
+    std::string str;
+    boost::to_string(bs.bitset, str);
+    return str;
+}
+
+// int BitSet::getMaxSetPosition() const
+// {
+//     if (bitset.none())
+//         return -1;
+
+//     size_t pos = bitset.find_first();
+//     size_t maxPos = pos;
+
+//     while (pos != Base::npos)
+//     {
+//         maxPos = pos;
+//         pos = bitset.find_next(pos);
+//     }
+
+//     if (maxPos > std::numeric_limits<int>::max())
+//         throw Exception(ErrorCodes::LOGICAL_ERROR, "BitSet is too large");
+
+//     return static_cast<int>(maxPos);
+// }
+
 struct JoinExpressionActions::Data : boost::noncopyable
 {
     using NodeToSourceMapping = std::unordered_map<NodeRawPtr, BitSet>;
@@ -45,8 +73,6 @@ struct JoinExpressionActions::Data : boost::noncopyable
     Data(ActionsDAG && actions_dag_, NodeToSourceMapping && expression_sources_)
         : actions_dag(std::move(actions_dag_)), expression_sources(std::move(expression_sources_))
     {
-        lhs_rels.set(0);
-        rhs_rels.set(1);
     }
 
     BitSet lhs_rels;
@@ -54,6 +80,11 @@ struct JoinExpressionActions::Data : boost::noncopyable
     ActionsDAG actions_dag;
     NodeToSourceMapping expression_sources;
 };
+
+JoinExpressionActions::JoinExpressionActions()
+    : data(std::make_shared<Data>(ActionsDAG(), Data::NodeToSourceMapping()))
+{
+}
 
 JoinExpressionActions::JoinExpressionActions(const Block & left_header, const Block & right_header)
 {
@@ -145,10 +176,51 @@ BitSet getExpressionSourcesImpl(std::unordered_map<NodeRawPtr, BitSet> & express
 
 std::shared_ptr<ActionsDAG> JoinExpressionActions::getActionsDAG() const
 {
-    if (!data)
-        throw Exception(ErrorCodes::LOGICAL_ERROR, "Cannot get actions DAG for JoinExpressionActions");
     return std::shared_ptr<ActionsDAG>(data, &data->actions_dag);
 }
+
+void JoinExpressionActions::setNodeSources(const NodeToSourceMapping & expression_sources)
+{
+    data->expression_sources.insert(expression_sources.begin(), expression_sources.end());
+}
+
+std::pair<ActionsDAG, JoinExpressionActions::NodeToSourceMapping> JoinExpressionActions::detachActionsDAG()
+{
+    auto actions_dag = std::move(data->actions_dag);
+    auto expression_sources = std::move(data->expression_sources);
+    data = std::make_shared<Data>(ActionsDAG(), Data::NodeToSourceMapping());
+    return std::make_pair(std::move(actions_dag), std::move(expression_sources));
+}
+
+// size_t JoinExpressionActions::getRelationsCount() const
+// {
+//     return std::max(data->lhs_rels.getMaxSetPosition(), data->rhs_rels.getMaxSetPosition()) + 1;
+// }
+
+// JoinExpressionActions JoinExpressionActions::unite(JoinExpressionActions && lhs, JoinExpressionActions && rhs)
+// {
+//     JoinExpressionActions::Data::NodeToSourceMapping expression_sources;
+//     ActionsDAG actions_dag;
+//     actions_dag.unite(std::move(lhs.data->actions_dag));
+//     actions_dag.unite(std::move(rhs.data->actions_dag));
+
+//     int shift = lhs.getRelationsCount();
+
+//     expression_sources = std::move(lhs.data->expression_sources);
+//     for (auto [node, sources] : rhs.data->expression_sources)
+//     {
+//         sources.shift(shift);
+//         expression_sources[node] = sources;
+//     }
+
+//     auto data = std::make_shared<Data>(std::move(actions_dag), std::move(expression_sources));
+
+//     data->lhs_rels = lhs.data->lhs_rels;
+//     data->rhs_rels = rhs.data->rhs_rels;
+//     data->rhs_rels.shift(shift);
+
+//     return JoinExpressionActions(std::move(data));
+// }
 
 JoinActionRef::JoinActionRef(NodeRawPtr node_, std::shared_ptr<JoinExpressionActions::Data> data_)
     : node_ptr(node_)
@@ -167,6 +239,8 @@ JoinActionRef::JoinActionRef(NodeRawPtr node_, std::shared_ptr<JoinExpressionAct
 JoinActionRef::JoinActionRef(NodeRawPtr node_, JoinExpressionActions & expression_actions_)
     : JoinActionRef(node_, expression_actions_.data)
 {
+    if (!expression_actions_.data)
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "Cannot create JoinActionRef for empty expression actions");
 }
 
 const ActionsDAG::Node * JoinActionRef::getNode() const
@@ -300,16 +374,14 @@ bool JoinActionRef::isFunction(JoinConditionOperator op) const
 
 bool JoinActionRef::fromLeft() const
 {
-    auto data_ptr = getData();
-    auto src_rels = getExpressionSourcesImpl(data_ptr->expression_sources, *this);
-    return src_rels.any() && isSubsetOf(src_rels, data_ptr->lhs_rels);
+    auto src_rels = getExpressionSourcesImpl(getData()->expression_sources, *this);
+    return src_rels.count() == 1 && src_rels.test(0);
 }
 
 bool JoinActionRef::fromRight() const
 {
-    auto data_ptr = getData();
-    auto src_rels = getExpressionSourcesImpl(data_ptr->expression_sources, *this);
-    return src_rels.any() && isSubsetOf(src_rels, data_ptr->rhs_rels);
+    auto src_rels = getExpressionSourcesImpl(getData()->expression_sources, *this);
+    return src_rels.count() == 1 && src_rels.test(1);
 }
 
 bool JoinActionRef::fromNone() const

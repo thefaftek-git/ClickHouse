@@ -29,16 +29,27 @@ class BitSet
 public:
     BitSet() = default;
 
-    BitSet & set(size_t pos)
+    static BitSet allSet(size_t size)
+    {
+        Base bs(size);
+        bs.set();
+        return BitSet(std::move(bs));
+    }
+
+    BitSet & set(size_t pos, bool val = true)
     {
         if (pos >= bitset.size())
             bitset.resize(pos + 1);
-        bitset.set(pos);
+        bitset.set(pos, val);
         return *this;
     }
 
+    int getMaxSetPosition() const;
+
+    size_t count() const { return bitset.count(); }
     bool any() const { return bitset.any(); }
     bool none() const { return bitset.none(); }
+    bool test(size_t pos) const { return bitset.test(pos); }
 
     friend bool operator ==(const BitSet & lhs, const BitSet & rhs)
     {
@@ -58,6 +69,18 @@ public:
         return BitSet(lhs.bitset | rhs.bitset);
     }
 
+    void shift(size_t pos)
+    {
+        if (pos == 0)
+            return;
+        bitset.resize(bitset.size() + pos);
+        bitset <<= pos;
+    }
+
+    friend String toString(const BitSet & bitset);
+
+    operator bool() const { return bitset.any(); } /// NOLINT
+
 private:
     using Base = boost::dynamic_bitset<>;
 
@@ -73,6 +96,8 @@ private:
     mutable Base bitset;
 };
 
+String toString(const BitSet & bs);
+
 inline bool isSubsetOf(const BitSet & lhs, const BitSet & rhs) { return (lhs & rhs) == lhs; }
 
 class JoinActionRef;
@@ -81,7 +106,9 @@ class JoinExpressionActions
 {
 public:
     using NodeRawPtr = const ActionsDAG::Node *;
+    using NodeToSourceMapping = std::unordered_map<NodeRawPtr, BitSet>;
 
+    JoinExpressionActions();
     JoinExpressionActions(const Block & left_header, const Block & right_header);
     JoinExpressionActions(const Block & left_header, const Block & right_header, ActionsDAG && actions_dag);
 
@@ -90,6 +117,9 @@ public:
     JoinActionRef findNode(const String & column_name, bool is_input = false, bool throw_if_not_found = true) const;
 
     std::shared_ptr<ActionsDAG> getActionsDAG() const;
+
+    void setNodeSources(const NodeToSourceMapping & expression_sources);
+    std::pair<ActionsDAG, NodeToSourceMapping> detachActionsDAG();
 
     template <std::ranges::range Range>
     requires std::convertible_to<std::ranges::range_value_t<Range>, JoinActionRef>

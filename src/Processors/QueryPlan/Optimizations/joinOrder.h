@@ -1,8 +1,10 @@
 #pragma once
 
+#include <vector>
 #include <Core/Joins.h>
 #include <Interpreters/JoinOperator.h>
 #include <Interpreters/JoinExpressionActions.h>
+#include <Processors/QueryPlan/Optimizations/joinCost.h>
 
 namespace DB
 {
@@ -48,10 +50,17 @@ struct DPJoinEntry
     bool isLeaf() const;
 };
 
-class JoinStepLogical;
+struct QueryGraph
+{
+    std::vector<RelationStats> relation_stats;
 
-DPJoinEntryPtr optimizeJoinOrder(const JoinStepLogical & join_step);
-DPJoinEntryPtr constructLeftDeepJoinOrder(const JoinStepLogical & join_step);
+    std::vector<JoinActionRef> edges;
+
+    std::vector<std::tuple<BitSet, BitSet, JoinKind>> dependencies;
+    std::unordered_map<JoinActionRef, BitSet> pinned;
+};
+
+DPJoinEntryPtr optimizeJoinOrder(QueryGraph query_graph);
 
 
 }

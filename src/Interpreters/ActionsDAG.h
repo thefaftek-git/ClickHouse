@@ -338,14 +338,19 @@ public:
     /// Otherwise, any two actions may be combined.
     static ActionsDAG merge(ActionsDAG && first, ActionsDAG && second);
 
+    using NodeMapping = std::unordered_map<const Node *, const Node *>;
     /// The result is similar to merge(*this, second);
     /// Invariant : no nodes are removed from the first (this) DAG.
     /// So that pointers to nodes are kept valid.
     void mergeInplace(ActionsDAG && second);
+    void mergeInplace(ActionsDAG && second, NodeMapping & inputs_map, bool remove_dangling_inputs);
 
     /// Merge current nodes with specified dag nodes.
     /// *out_outputs is filled with pointers to the nodes corresponding to second.getOutputs().
     void mergeNodes(ActionsDAG && second, NodeRawConstPtrs * out_outputs = nullptr);
+
+    /// Union current nodes with second dag without any matching of inputs and outputs.
+    void unite(ActionsDAG && second);
 
     struct SplitResult;
 

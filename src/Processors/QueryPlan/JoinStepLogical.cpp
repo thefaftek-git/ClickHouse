@@ -62,7 +62,6 @@ namespace Setting
     extern const SettingsJoinAlgorithm join_algorithm;
     extern const SettingsBool join_any_take_last_row;
     extern const SettingsUInt64 default_max_bytes_in_join;
-    extern const SettingsBool join_use_nulls;
 }
 
 namespace ErrorCodes
@@ -148,7 +147,6 @@ JoinStepLogical::JoinStepLogical(
     SortingStep::Settings sorting_settings_)
     : expression_actions(std::move(join_expression_actions_))
     , join_operator(std::move(join_operator_))
-    , use_nulls(use_nulls_)
     , join_settings(std::move(join_settings_))
     , sorting_settings(std::move(sorting_settings_))
 {
@@ -173,6 +171,8 @@ JoinStepLogical::JoinStepLogical(
     updateInputHeaders({left_header_, right_header_});
 }
 
+JoinStepLogical::~JoinStepLogical() = default;
+
 QueryPipelineBuilderPtr JoinStepLogical::updatePipeline(QueryPipelineBuilders /* pipelines */, const BuildQueryPipelineSettings & /* settings */)
 {
     throw Exception(ErrorCodes::NOT_IMPLEMENTED, "Cannot execute JoinStepLogical, it should be converted physical step first");
@@ -196,9 +196,6 @@ std::vector<std::pair<String, String>> JoinStepLogical::describeJoinProperties()
     description.emplace_back("Strictness", toString(join_operator.strictness));
     description.emplace_back("Locality", toString(join_operator.locality));
     description.emplace_back("Expression", formatJoinCondition(join_operator.expression));
-
-    for (const auto & [name, value] : runtime_info_description)
-        description.emplace_back(name, value);
 
     return description;
 }
@@ -252,13 +249,12 @@ void JoinStepLogicalLookup::initializePipeline(QueryPipelineBuilder & pipeline_b
     pipeline_builder = std::move(*child_plan.buildQueryPipeline(optimization_settings, build_pipeline_settings, /* do_optimize */ false));
 }
 
-std::optional<UInt64> JoinStepLogicalLookup::optimize(const QueryPlanOptimizationSettings & optimization_settings)
+void JoinStepLogicalLookup::optimize(const QueryPlanOptimizationSettings & optimization_settings)
 {
     if (optimized)
-        return {};
+        return;
     optimized = true;
     child_plan.optimize(optimization_settings);
-    return 1;
 }
 
 /// When we have an expression like `a AND b`, it can work even when `a` and `b` are non-boolean values,
@@ -613,7 +609,6 @@ static QueryPlanNode buildPhysicalJoinImpl(
     std::vector<QueryPlanNode *> children,
     JoinOperator join_operator,
     JoinExpressionActions expression_actions,
-    bool use_nulls,
     JoinSettings join_settings,
     JoinAlgorithmParams join_algorithm_params,
     SortingStep::Settings sorting_settings,
@@ -623,7 +618,7 @@ static QueryPlanNode buildPhysicalJoinImpl(
 {
     auto * logical_lookup = typeid_cast<JoinStepLogicalLookup *>(children.back()->step.get());
 
-    auto table_join = std::make_shared<TableJoin>(join_settings, use_nulls && logical_lookup,
+    auto table_join = std::make_shared<TableJoin>(join_settings, logical_lookup && logical_lookup->useNulls(),
         Context::getGlobalContextInstance()->getGlobalTemporaryVolume(),
         Context::getGlobalContextInstance()->getTempDataOnDisk());
 
@@ -892,7 +887,6 @@ static QueryPlanNode buildPhysicalJoinImpl(
 
 void JoinStepLogical::buildPhysicalJoin(
     QueryPlanNode & node,
-    std::vector<RelationStats> relation_stats,
     const QueryPlanOptimizationSettings & optimization_settings,
     QueryPlan::Nodes & nodes)
 {
@@ -908,28 +902,21 @@ void JoinStepLogical::buildPhysicalJoin(
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Expected JoinStepLogical, got nullptr");
     }
 
-    UInt64 hash_table_key_hash = 0;
-    if (join_step->hash_table_key_hashes)
-        hash_table_key_hash = join_step->hash_table_key_hashes->key_hash_left;
-
-    JoinAlgorithmParams join_algorithm_params(
-        join_step->join_settings,
-        optimization_settings.max_threads,
-        hash_table_key_hash,
-        optimization_settings.max_entries_for_hash_table_stats,
-        optimization_settings.initial_query_id,
-        optimization_settings.lock_acquire_timeout);
-
-    if (relation_stats.size() == 2 && relation_stats[1].estimated_rows > 0)
-        join_algorithm_params.rhs_size_estimation = relation_stats[1].estimated_rows;
+    if (!join_step->join_algorithm_params)
+        join_step->join_algorithm_params = std::make_unique<JoinAlgorithmParams>(
+            join_step->join_settings,
+            optimization_settings.max_threads,
+            /* hash_table_key_hash_ */ 0,
+            optimization_settings.max_entries_for_hash_table_stats,
+            optimization_settings.initial_query_id,
+            optimization_settings.lock_acquire_timeout);
 
     auto new_node = buildPhysicalJoinImpl(
         node.children,
         join_step->join_operator,
         std::move(join_step->expression_actions),
-        join_step->use_nulls,
         join_step->join_settings,
-        join_algorithm_params,
+        *join_step->join_algorithm_params,
         join_step->sorting_settings,
         join_step->actions_after_join,
         optimization_settings,
@@ -954,6 +941,18 @@ std::optional<ActionsDAG::ActionsForFilterPushDown> JoinStepLogical::getFilterAc
         return filter_to_push_down;
 
         // TODO: try use `createActionsForConjunction`
+        // filter_column_name = filter_condition.getColumnName();
+        // ActionsDAG new_dag = JoinExpressionActions::getSubDAG(filter_condition);
+        // if (new_dag.getOutputs().size() != 1)
+        //     throw Exception(ErrorCodes::LOGICAL_ERROR, "Expected 1 output column, got {}", new_dag.getOutputs().size());
+
+        // const auto & inputs = new_dag.getInputs();
+        // auto & outputs = new_dag.getOutputs();
+        // if (std::ranges::contains(inputs, outputs.front()))
+        //     outputs.clear();
+        // outputs.append_range(inputs);
+
+        // return std::move(new_dag);
     }
 
     return {};

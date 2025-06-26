@@ -1761,6 +1761,12 @@ ActionsDAG ActionsDAG::merge(ActionsDAG && first, ActionsDAG && second)
 
 void ActionsDAG::mergeInplace(ActionsDAG && second)
 {
+    std::unordered_map<const Node *, const Node *> inputs_map;
+    mergeInplace(std::move(second), inputs_map, false);
+}
+
+void ActionsDAG::mergeInplace(ActionsDAG && second, std::unordered_map<const Node *, const Node *> & inputs_map, bool remove_dangling_inputs)
+{
     auto & first = *this;
     /// first: x (1), x (2), y ==> x (2), z, x (3)
     /// second: x (1), x (2), x (3) ==> x (3), x (2), x (1)
@@ -1772,7 +1778,6 @@ void ActionsDAG::mergeInplace(ActionsDAG && second)
     /// The second element is the number of removes (cause one node may be repeated several times in result).
     std::unordered_map<const Node *, size_t> removed_first_result;
     /// Map inputs of `second` to nodes of `first`.
-    std::unordered_map<const Node *, const Node *> inputs_map;
 
     /// Update inputs list.
     {
@@ -1834,6 +1839,13 @@ void ActionsDAG::mergeInplace(ActionsDAG && second)
 
         first.outputs.swap(second.outputs);
     }
+
+    if (remove_dangling_inputs)
+        std::erase_if(second.nodes, [&inputs_map](const auto & node)
+        {
+            auto mapit = inputs_map.find(&node);
+            return mapit != inputs_map.end() && mapit->second != &node;
+        });
 
     first.nodes.splice(first.nodes.end(), std::move(second.nodes));
 }
@@ -1919,6 +1931,13 @@ void ActionsDAG::mergeNodes(ActionsDAG && second, NodeRawConstPtrs * out_outputs
         if (node_to_move_it->type == ActionType::INPUT)
             inputs.push_back(&(*node_to_move_it));
     }
+}
+
+void ActionsDAG::unite(ActionsDAG && second)
+{
+    nodes.splice(nodes.end(), std::move(second.nodes));
+    inputs.append_range(second.inputs);
+    outputs.append_range(second.outputs);
 }
 
 ActionsDAG::SplitResult ActionsDAG::split(std::unordered_set<const Node *> split_nodes, bool create_split_nodes_mapping, bool avoid_duplicate_inputs) const

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <optional>
 #include <Interpreters/JoinOperator.h>
 #include <Processors/QueryPlan/IQueryPlanStep.h>
@@ -11,12 +12,12 @@
 #include <Processors/QueryPlan/Optimizations/joinCost.h>
 #include <Core/Joins.h>
 #include <Interpreters/JoinExpressionActions.h>
-
 namespace DB
 {
 
 class StorageJoin;
 class IKeyValueEntity;
+struct JoinAlgorithmParams;
 
 struct PreparedJoinStorage
 {
@@ -37,6 +38,7 @@ struct PreparedJoinStorage
             visitor(storage_key_value);
     }
 };
+
 
 /** JoinStepLogical is a logical step for JOIN operation.
   * Doesn't contain any specific join algorithm or other execution details.
@@ -66,6 +68,8 @@ public:
         JoinSettings join_settings_,
         SortingStep::Settings sorting_settings_);
 
+    ~JoinStepLogical() override;
+
     String getName() const override { return "JoinLogical"; }
     String getSerializationName() const override { return "Join"; }
 
@@ -93,21 +97,12 @@ public:
 
     const ActionsDAG & getActionsDAG() const { return *expression_actions.getActionsDAG(); }
 
-    const JoinSettings & getSettings() const { return join_settings; }
-    bool useNulls() const { return use_nulls; }
-
-    struct HashTableKeyHashes
+    std::pair<JoinExpressionActions, JoinOperator> detachExpressions()
     {
-        UInt64 key_hash_left;
-        UInt64 key_hash_right;
-    };
-
-    void setHashTableCacheKeys(UInt64 left_key_hash, UInt64 right_key_hash)
-    {
-        hash_table_key_hashes.emplace(left_key_hash, right_key_hash);
+        return {std::move(expression_actions), std::move(join_operator)};
     }
 
-    const std::optional<HashTableKeyHashes> & getHashTableKeyHashes() const { return hash_table_key_hashes; }
+    const JoinSettings & getSettings() const { return join_settings; }
 
     void serializeSettings(QueryPlanSerializationSettings & settings) const override;
     void serialize(Serialization & ctx) const override;
@@ -126,16 +121,14 @@ public:
 
     static void buildPhysicalJoin(
         QueryPlan::Node & node,
-        std::vector<RelationStats> relation_stats,
         const QueryPlanOptimizationSettings & optimization_settings,
         QueryPlan::Nodes & nodes);
 
+    bool changesColumnsType() const { return false; }
 protected:
     void updateOutputHeader() override;
 
     std::vector<std::pair<String, String>> describeJoinProperties() const;
-
-    std::optional<HashTableKeyHashes> hash_table_key_hashes;
 
     JoinExpressionActions expression_actions;
     JoinOperator join_operator;
@@ -145,16 +138,12 @@ protected:
     /// It can be input or node with toNullable function applied to input
     std::vector<const ActionsDAG::Node *> actions_after_join = {};
 
-    bool use_nulls;
-
     JoinSettings join_settings;
     SortingStep::Settings sorting_settings;
 
+    std::unique_ptr<JoinAlgorithmParams> join_algorithm_params;
     VolumePtr tmp_volume;
     TemporaryDataOnDiskScopePtr tmp_data;
-
-    /// Add some information from convertToPhysical to description in explain output.
-    std::vector<std::pair<String, String>> runtime_info_description;
 };
 
 
@@ -168,10 +157,14 @@ public:
 
     PreparedJoinStorage & getPreparedJoinStorage() { return prepared_join_storage; }
 
-    std::optional<UInt64> optimize(const QueryPlanOptimizationSettings & optimization_settings);
+    bool useNulls() const { return use_nulls; }
+    void setUseNulls(bool use_nulls_ = true) { use_nulls = use_nulls_; }
+
+    void optimize(const QueryPlanOptimizationSettings & optimization_settings);
 private:
     PreparedJoinStorage prepared_join_storage;
 
+    bool use_nulls = false;
     bool optimized = false;
     QueryPlan child_plan;
 };

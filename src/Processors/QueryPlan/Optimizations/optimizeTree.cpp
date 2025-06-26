@@ -152,8 +152,6 @@ void optimizeTreeSecondPass(const QueryPlanOptimizationSettings & optimization_s
         stack.pop_back();
     }
 
-    calculateHashTableCacheKeys(root);
-
     stack.push_back({.node = &root});
     while (!stack.empty())
     {
@@ -161,8 +159,8 @@ void optimizeTreeSecondPass(const QueryPlanOptimizationSettings & optimization_s
 
         if (frame.next_child == 0)
         {
-            const auto rhs_estimation = optimizeJoinLogical(*frame.node, nodes, optimization_settings);
-            bool has_join_logical = convertLogicalJoinToPhysical(*frame.node, nodes, optimization_settings, rhs_estimation);
+            optimizeJoinLogical(*frame.node, nodes, optimization_settings);
+            bool has_join_logical = convertLogicalJoinToPhysical(*frame.node, nodes, optimization_settings, {});
             if (!has_join_logical)
                 optimizeJoinLegacy(*frame.node, nodes, optimization_settings);
 
