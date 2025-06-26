@@ -2,7 +2,6 @@
 
 #include <config.h>
 
-#include <Common/StringUtils.h>
 #include <Poco/Net/Context.h>
 #include <Poco/Net/HTTPSClientSession.h>
 #include <Poco/Net/SSLManager.h>
@@ -16,34 +15,6 @@
 
 namespace DB
 {
-
-struct AuthEndpoints
-{
-    std::string auth_url;
-    std::string client_id;
-    std::string api_host;
-};
-
-static const std::map<std::string, AuthEndpoints> managed_service_endpoints = {
-    {
-        ".clickhouse-dev.com",
-        {
-            "https://ch-local-dev.us.auth0.com",
-            "HxCYHJpfUCQtX6Y8EzFWImHLVFbVNahh",
-            "https://console-api.clickhouse-dev.com"
-        }
-    }
-};
-
-inline const AuthEndpoints * getAuthEndpoints(const std::string & host)
-{
-    for (const auto & [suffix, endpoints] : managed_service_endpoints)
-    {
-        if (endsWith(host, suffix))
-            return &endpoints;
-    }
-    return nullptr;
-}
 
 class JwtProvider
 {
@@ -90,4 +61,5 @@ std::unique_ptr<JwtProvider> createJwtProvider(
     std::ostream & out,
     std::ostream & err);
 
+bool isCloudEndpoint(const std::string & host);
 }

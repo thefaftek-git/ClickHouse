@@ -452,23 +452,13 @@ void Client::login()
     std::string auth_url = getClientConfiguration().getString("auth-url", "");
     std::string client_id = getClientConfiguration().getString("auth-client-id", "");
 
-    if (auth_url.empty() || client_id.empty())
+    if ((auth_url.empty() || client_id.empty()) && !isCloudEndpoint(host))
     {
-        if (const auto * endpoints = getAuthEndpoints(host))
-        {
-            if (auth_url.empty())
-                auth_url = endpoints->auth_url;
-            if (client_id.empty())
-                client_id = endpoints->client_id;
-        }
-        else
-        {
-            throw Exception(
-                ErrorCodes::BAD_ARGUMENTS,
-                "Could not retrieve authentication endpoints for host '{}'. Please specify --auth-url and --auth-client-id if you are "
-                "not using ClickHouse Cloud.",
-                host);
-        }
+        throw Exception(
+            ErrorCodes::BAD_ARGUMENTS,
+            "Could not retrieve authentication endpoints for host '{}'. Please specify --auth-url and --auth-client-id if you are "
+            "not using ClickHouse Cloud.",
+            host);
     }
 
     std::unique_ptr<JwtProvider> provider = createJwtProvider(auth_url, client_id, host, output_stream, error_stream);

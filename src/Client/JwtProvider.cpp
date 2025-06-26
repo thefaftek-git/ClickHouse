@@ -57,6 +57,7 @@ bool JwtProvider::initialLogin()
         return false;
     }
     std::string scope = "openid profile email offline_access";
+    std::string audience = "control-plane-web";
 
     std::string device_code;
     int interval_seconds = 5;
@@ -71,7 +72,9 @@ bool JwtProvider::initialLogin()
 
         std::string encoded_scope;
         Poco::URI::encode(scope, "", encoded_scope);
-        std::string request_body = "client_id=" + client_id_str + "&scope=" + encoded_scope;
+        std::string encoded_audience;
+        Poco::URI::encode(audience, "", encoded_audience);
+        std::string request_body = "client_id=" + client_id_str + "&scope=" + encoded_scope + "&audience=" + encoded_audience;
 
         request.setContentLength(request_body.length());
         session->sendRequest(request) << request_body;
@@ -93,8 +96,8 @@ bool JwtProvider::initialLogin()
         interval_seconds = object->getValue<int>("interval");
         expires_at_ts = Poco::Timestamp().epochTime() + object->getValue<int>("expires_in");
 
-        output_stream << "Attempting to automatically open the authentication URL in your browser.\n"
-                      << "To authenticate, please use the following code: " << user_code << "\n" << std::endl;
+        output_stream << "\nAttempting to automatically open the authentication URL in your browser.\n"
+                      << "For authentication, use the following code: \033[1m" << user_code << "\033[0m\n" << std::endl;
 
         if (!openURLInBrowser(verification_uri_complete))
         {
@@ -136,7 +139,6 @@ bool JwtProvider::initialLogin()
                 idp_access_token_expires_at = Poco::Timestamp().epochTime() + object->getValue<int>("expires_in");
                 if (object->has("refresh_token"))
                     idp_refresh_token = object->getValue<std::string>("refresh_token");
-                output_stream << "Successfully authenticated with Identity Provider." << std::endl;
                 return true;
             }
 
@@ -254,6 +256,11 @@ Poco::Timestamp JwtProvider::getJwtExpiry(const std::string & token)
     }
 }
 
+bool isCloudEndpoint(const std::string & host)
+{
+    return endsWith(host, ".clickhouse.cloud") || endsWith(host, ".clickhouse-staging.com") || endsWith(host, ".clickhouse-dev.com");
+}
+
 std::unique_ptr<JwtProvider> createJwtProvider(
     const std::string & auth_url,
     const std::string & client_id,
@@ -261,7 +268,7 @@ std::unique_ptr<JwtProvider> createJwtProvider(
     std::ostream & out,
     std::ostream & err)
 {
-    if (endsWith(host, ".clickhouse.cloud") || endsWith(host, ".clickhouse-staging.com") || endsWith(host, ".clickhouse-dev.com"))
+    if (isCloudEndpoint(host))
     {
         return std::make_unique<CloudJwtProvider>(auth_url, client_id, host, out, err);
     }

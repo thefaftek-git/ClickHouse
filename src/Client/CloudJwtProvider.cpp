@@ -33,18 +33,75 @@ namespace ErrorCodes
 
 namespace
 {
+
+struct AuthEndpoints
+{
+    std::string auth_url;
+    std::string client_id;
+    std::string api_host;
+};
+
+static const std::map<std::string, AuthEndpoints> managed_service_endpoints = {
+    {
+        ".clickhouse-dev.com",
+        {
+            "https://auth.control-plane.clickhouse-dev.com",
+            "dKv0XkTAw7rghGiAa5sjPFYGQUVtjzuz",
+            "https://control-plane-internal.clickhouse-dev.com"
+        }
+    },
+    {
+        ".clickhouse-staging.com",
+        {
+            "https://ch-staging.us.auth0.com",
+            "TODO: CREATE THIS",
+            "https://control-plane-internal.clickhouse-staging.com"
+        }
+    },
+    {
+        ".clickhouse.cloud",
+        {
+            "https://ch-production.us.auth0.com",
+            "TODO: CREATE THIS",
+            "https://control-plane-internal.clickhouse.cloud"
+        }
+    }
+};
+
+inline const AuthEndpoints * getAuthEndpoints(const std::string & host)
+{
+    for (const auto & [suffix, endpoints] : managed_service_endpoints)
+    {
+        if (endsWith(host, suffix))
+            return &endpoints;
+    }
+    return nullptr;
+}
+
 }
 
 CloudJwtProvider::CloudJwtProvider(
     std::string auth_url, std::string client_id, std::string host,
     std::ostream & out, std::ostream & err)
     : JwtProvider(std::move(auth_url), std::move(client_id), out, err),
-      host_str(std::move(host)) {}
+      host_str(std::move(host))
+{
+    if (auth_url_str.empty() || client_id_str.empty())
+    {
+        if (const auto * endpoints = getAuthEndpoints(host_str))
+        {
+            if (auth_url_str.empty())
+                auth_url_str = endpoints->auth_url;
+            if (client_id_str.empty())
+                client_id_str = endpoints->client_id;
+        }
+    }
+}
 
 std::string CloudJwtProvider::getJWT()
 {
     Poco::Timestamp now;
-    Poco::Timestamp expiration_buffer = 5 * Poco::Timespan::SECONDS;
+    Poco::Timestamp expiration_buffer = 30 * Poco::Timespan::SECONDS;
 
     if (!final_clickhouse_jwt.empty() && now < final_clickhouse_jwt_expires_at - expiration_buffer)
         return final_clickhouse_jwt;
@@ -58,7 +115,6 @@ std::string CloudJwtProvider::getJWT()
     if (initialLogin() && swapIdPTokenForClickHouseJWT())
         return final_clickhouse_jwt;
 
-    error_stream << "Failed to obtain a valid ClickHouse JWT." << std::endl;
     return "";
 }
 
@@ -73,18 +129,25 @@ bool CloudJwtProvider::swapIdPTokenForClickHouseJWT()
         return false;
     }
 
-    std::string swap_url = endpoints->api_host + "/token-swap";
+    std::string swap_url = endpoints->api_host + "/api/tokenSwap";
 
-    output_stream << "Swapping IdP token for a ClickHouse JWT..." << std::endl;
+    output_stream << "Fetching credentials for " << host_str << "..." << std::endl;
     try
     {
         Poco::URI swap_uri(swap_url);
-        swap_uri.addQueryParameter("hostname", host_str);
         auto session = createHTTPSession(swap_uri);
         Poco::Net::HTTPRequest request(Poco::Net::HTTPRequest::HTTP_POST, swap_uri.getPathAndQuery(), Poco::Net::HTTPMessage::HTTP_1_1);
         request.set("Authorization", "Bearer " + idp_access_token);
-        request.setContentLength(0);
-        session->sendRequest(request);
+
+        Poco::JSON::Object body;
+        body.set("hostname", host_str);
+        std::stringstream body_stream;
+        body.stringify(body_stream);
+        std::string request_body = body_stream.str();
+
+        request.setContentType("application/json; charset=utf-8");
+        request.setContentLength(request_body.length());
+        session->sendRequest(request) << request_body;
 
         Poco::Net::HTTPResponse response;
         std::istream & rs = session->receiveResponse(response);
@@ -96,11 +159,14 @@ bool CloudJwtProvider::swapIdPTokenForClickHouseJWT()
             return false;
         }
 
-        Poco::JSON::Object::Ptr object = Poco::JSON::Parser().parse(rs).extract<Poco::JSON::Object::Ptr>();
-        final_clickhouse_jwt = object->getValue<std::string>("token");
-        final_clickhouse_jwt_expires_at = getJwtExpiry(final_clickhouse_jwt);
+        std::string response_body;
+        Poco::StreamCopier::copyToString(rs, response_body);
 
-        output_stream << "Successfully obtained ClickHouse JWT." << std::endl;
+        Poco::JSON::Object::Ptr object = Poco::JSON::Parser().parse(response_body).extract<Poco::JSON::Object::Ptr>();
+        final_clickhouse_jwt = object->getValue<std::string>("token");
+        final_clickhouse_jwt_expires_at = jwt::decode(final_clickhouse_jwt).get_payload_claim("exp").as_integer();
+
+        output_stream << "Successfully authenticated with ClickHouse Cloud" << std::endl;
         return true;
     }
     catch(const Poco::Exception & ex)
