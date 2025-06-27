@@ -103,8 +103,6 @@ bool JwtProvider::initialLogin()
         {
             output_stream << "Please visit the URL below in your browser to complete authentication:\n" << verification_uri_complete << "\n" << std::endl;
         }
-
-        output_stream << "Waiting for authorization..." << std::endl;
     }
     catch (const Poco::Exception & ex)
     {
@@ -136,7 +134,7 @@ bool JwtProvider::initialLogin()
             if (response.getStatus() == Poco::Net::HTTPResponse::HTTP_OK)
             {
                 idp_access_token = object->getValue<std::string>("access_token");
-                idp_access_token_expires_at = Poco::Timestamp().epochTime() + object->getValue<int>("expires_in");
+                idp_access_token_expires_at = Poco::Timestamp::fromEpochTime(jwt::decode(idp_access_token).get_payload_claim("exp").as_integer());
                 if (object->has("refresh_token"))
                     idp_refresh_token = object->getValue<std::string>("refresh_token");
                 return true;
@@ -162,7 +160,6 @@ bool JwtProvider::initialLogin()
 
 bool JwtProvider::refreshIdPAccessToken()
 {
-    output_stream << "Refreshing access token..." << std::endl;
     Poco::URI auth_uri_check(auth_url_str);
     std::string token_url_str = auth_uri_check.getScheme() + "://" + auth_uri_check.getAuthority() + "/oauth/token";
 
@@ -190,11 +187,10 @@ bool JwtProvider::refreshIdPAccessToken()
 
         Poco::JSON::Object::Ptr object = Poco::JSON::Parser().parse(rs).extract<Poco::JSON::Object::Ptr>();
         idp_access_token = object->getValue<std::string>("access_token");
-        idp_access_token_expires_at = Poco::Timestamp().epochTime() + object->getValue<int>("expires_in");
+        idp_access_token_expires_at = Poco::Timestamp::fromEpochTime(jwt::decode(idp_access_token).get_payload_claim("exp").as_integer());
         if (object->has("refresh_token"))
              idp_refresh_token = object->getValue<std::string>("refresh_token");
 
-        output_stream << "Access token refreshed successfully." << std::endl;
         return true;
     }
     catch(const Poco::Exception & ex)

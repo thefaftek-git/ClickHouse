@@ -29,12 +29,15 @@ public:
     /// Returns a valid ClickHouse JWT.
     /// Implementations are responsible for handling the entire lifecycle,
     /// including initial login and subsequent refreshes.
-    /// @return The ClickHouse JWT on success, or an empty string on failure.
     virtual std::string getJWT() = 0;
+    static Poco::Timestamp getJwtExpiry(const std::string & token);
 
 protected:
     bool initialLogin();
     bool refreshIdPAccessToken();
+
+    static std::unique_ptr<Poco::Net::HTTPClientSession> createHTTPSession(const Poco::URI & uri);
+    static bool openURLInBrowser(const std::string & url);
 
     // Configuration
     std::string auth_url_str;
@@ -47,10 +50,6 @@ protected:
     std::string idp_refresh_token;
     Poco::Timestamp idp_access_token_expires_at{0};
 
-protected:
-    static std::unique_ptr<Poco::Net::HTTPClientSession> createHTTPSession(const Poco::URI & uri);
-    static bool openURLInBrowser(const std::string & url);
-    static Poco::Timestamp getJwtExpiry(const std::string & token);
 };
 
 /// Creates the appropriate JWT provider based on the application configuration.

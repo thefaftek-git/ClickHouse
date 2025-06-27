@@ -3134,8 +3134,6 @@ void ClientBase::addOptionsToTheClientConfiguration(const CommandLineOptions & o
         getClientConfiguration().setString("auth-url", options["auth-url"].as<std::string>());
     if (options.count("auth-client-id"))
         getClientConfiguration().setString("auth-client-id", options["auth-client-id"].as<std::string>());
-    if (options.count("control-plane-url"))
-        getClientConfiguration().setString("control-plane-url", options["control-plane-url"].as<std::string>());
 
     if (options.count("log-level"))
         Poco::Logger::root().setLevel(options["log-level"].as<std::string>());

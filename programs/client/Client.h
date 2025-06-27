@@ -73,5 +73,9 @@ private:
     std::vector<String> loadWarningMessages();
 
     std::optional<CurrentThread::QueryScope> query_scope;
+
+#if USE_JWT_CPP && USE_SSL
+    std::shared_ptr<JwtProvider> jwt_provider;
+#endif
 };
 }

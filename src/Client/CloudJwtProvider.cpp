@@ -53,15 +53,15 @@ static const std::map<std::string, AuthEndpoints> managed_service_endpoints = {
     {
         ".clickhouse-staging.com",
         {
-            "https://ch-staging.us.auth0.com",
-            "TODO: CREATE THIS",
+            "https://auth.control-plane.clickhouse-staging.com",
+            "rpEkizLMmAU95MP4JL8ERefbVXtUQSFs",
             "https://control-plane-internal.clickhouse-staging.com"
         }
     },
     {
         ".clickhouse.cloud",
         {
-            "https://ch-production.us.auth0.com",
+            "https://auth.control-plane.clickhouse.cloud",
             "TODO: CREATE THIS",
             "https://control-plane-internal.clickhouse.cloud"
         }
@@ -103,22 +103,31 @@ std::string CloudJwtProvider::getJWT()
     Poco::Timestamp now;
     Poco::Timestamp expiration_buffer = 30 * Poco::Timespan::SECONDS;
 
-    if (!final_clickhouse_jwt.empty() && now < final_clickhouse_jwt_expires_at - expiration_buffer)
-        return final_clickhouse_jwt;
+    // If we have a valid ClickHouse JWT, return it.
+    if (!clickhouse_jwt.empty() && now < clickhouse_jwt_expires_at - expiration_buffer)
+        return clickhouse_jwt;
 
-    if (!idp_refresh_token.empty())
+    // If we have a valid IDP refresh token, attempt to refresh the IDP access token if expired.
+    if (!idp_refresh_token.empty() && now >= idp_access_token_expires_at - expiration_buffer)
     {
-        if (refreshIdPAccessToken() && swapIdPTokenForClickHouseJWT())
-            return final_clickhouse_jwt;
+        refreshIdPAccessToken();
     }
 
-    if (initialLogin() && swapIdPTokenForClickHouseJWT())
-        return final_clickhouse_jwt;
+    // If we have a valid IDP access token, attempt to swap it for a ClickHouse JWT.
+    if (!idp_access_token.empty() && now < idp_access_token_expires_at - expiration_buffer)
+    {
+        if (swapIdPTokenForClickHouseJWT(false))
+            return clickhouse_jwt;
+    }
+
+    // If we don't have a valid ClickHouse JWT, attempt to login and swap the IDP token for a ClickHouse JWT.
+    if (initialLogin() && swapIdPTokenForClickHouseJWT(true))
+        return clickhouse_jwt;
 
     return "";
 }
 
-bool CloudJwtProvider::swapIdPTokenForClickHouseJWT()
+bool CloudJwtProvider::swapIdPTokenForClickHouseJWT(bool show_messages)
 {
     const auto * endpoints = getAuthEndpoints(host_str);
 
@@ -131,7 +140,8 @@ bool CloudJwtProvider::swapIdPTokenForClickHouseJWT()
 
     std::string swap_url = endpoints->api_host + "/api/tokenSwap";
 
-    output_stream << "Fetching credentials for " << host_str << "..." << std::endl;
+    if (show_messages)
+        output_stream << "Authenticating access to " << host_str << "." << std::endl;
     try
     {
         Poco::URI swap_uri(swap_url);
@@ -163,10 +173,11 @@ bool CloudJwtProvider::swapIdPTokenForClickHouseJWT()
         Poco::StreamCopier::copyToString(rs, response_body);
 
         Poco::JSON::Object::Ptr object = Poco::JSON::Parser().parse(response_body).extract<Poco::JSON::Object::Ptr>();
-        final_clickhouse_jwt = object->getValue<std::string>("token");
-        final_clickhouse_jwt_expires_at = jwt::decode(final_clickhouse_jwt).get_payload_claim("exp").as_integer();
+        clickhouse_jwt = object->getValue<std::string>("token");
+        clickhouse_jwt_expires_at = Poco::Timestamp::fromEpochTime(jwt::decode(clickhouse_jwt).get_payload_claim("exp").as_integer());
 
-        output_stream << "Successfully authenticated with ClickHouse Cloud" << std::endl;
+        if (show_messages)
+            output_stream << "Authenticated with ClickHouse Cloud.\n" << std::endl;
         return true;
     }
     catch(const Poco::Exception & ex)

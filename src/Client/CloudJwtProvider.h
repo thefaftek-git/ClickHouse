@@ -22,14 +22,14 @@ public:
     std::string getJWT() override;
 
 private:
-    bool swapIdPTokenForClickHouseJWT();
+    bool swapIdPTokenForClickHouseJWT(bool show_messages = true);
 
     // Configuration
     std::string host_str;
 
     // Token State
-    std::string final_clickhouse_jwt;
-    Poco::Timestamp final_clickhouse_jwt_expires_at{0};
+    std::string clickhouse_jwt;
+    Poco::Timestamp clickhouse_jwt_expires_at{0};
 };
 
 }

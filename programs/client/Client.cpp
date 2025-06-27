@@ -461,10 +461,10 @@ void Client::login()
             host);
     }
 
-    std::unique_ptr<JwtProvider> provider = createJwtProvider(auth_url, client_id, host, output_stream, error_stream);
-    if (provider)
+    jwt_provider = createJwtProvider(auth_url, client_id, host, output_stream, error_stream);
+    if (jwt_provider)
     {
-        std::string jwt = provider->getJWT();
+        std::string jwt = jwt_provider->getJWT();
         if (!jwt.empty())
         {
             getClientConfiguration().setString("jwt", jwt);
@@ -500,6 +500,8 @@ void Client::connect()
 
             connection_parameters = ConnectionParameters(
                 config(), host, database, hosts_and_ports[attempted_address_index].port);
+
+            connection_parameters.jwt_provider = jwt_provider;
 
             if (is_interactive)
                 output_stream << "Connecting to "
