@@ -49,7 +49,6 @@ namespace ErrorCodes
     extern const int BAD_ARGUMENTS;
     extern const int CANNOT_SET_SIGNAL_HANDLER;
     extern const int SUPPORT_IS_DISABLED;
-    extern const int NETWORK_ERROR;
 }
 
 static ClientInfo::QueryKind parseQueryKind(const String & query_kind)

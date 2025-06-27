@@ -15,21 +15,17 @@
 #include <Poco/JSON/Object.h>
 #include <Poco/Dynamic/Var.h>
 
+#include <IO/WriteBufferFromString.h>
+
 #include <thread>
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <jwt-cpp/jwt.h>
+#include <sstream>
 
 namespace DB
 {
-
-namespace ErrorCodes
-{
-    extern const int BAD_ARGUMENTS;
-    extern const int SUPPORT_IS_DISABLED;
-    extern const int NETWORK_ERROR;
-}
 
 namespace
 {
@@ -180,9 +176,9 @@ bool CloudJwtProvider::swapIdPTokenForClickHouseJWT(bool show_messages)
             output_stream << "Authenticated with ClickHouse Cloud.\n" << std::endl;
         return true;
     }
-    catch(const Poco::Exception & ex)
+    catch (const Poco::Exception & e)
     {
-        error_stream << "Exception during token swap: " << ex.displayText() << std::endl;
+        error_stream << "Exception during token swap: " << e.displayText() << std::endl;
         return false;
     }
 }

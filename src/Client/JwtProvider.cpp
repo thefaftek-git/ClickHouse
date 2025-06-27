@@ -104,9 +104,9 @@ bool JwtProvider::initialLogin()
             output_stream << "Please visit the URL below in your browser to complete authentication:\n" << verification_uri_complete << "\n" << std::endl;
         }
     }
-    catch (const Poco::Exception & ex)
+    catch (const Poco::Exception & e)
     {
-        error_stream << "Exception during device code request: " << ex.displayText() << std::endl;
+        error_stream << "Exception during device code request: " << e.displayText() << std::endl;
         return false;
     }
 
@@ -147,9 +147,9 @@ bool JwtProvider::initialLogin()
                 return false;
             }
         }
-        catch (const Poco::Exception & ex)
+        catch (const Poco::Exception & e)
         {
-            error_stream << "Error waiting for authorization: " << ex.displayText() << std::endl;
+            error_stream << "Error waiting for authorization: " << e.displayText() << std::endl;
             std::this_thread::sleep_for(std::chrono::seconds(5));
         }
     }
@@ -193,9 +193,9 @@ bool JwtProvider::refreshIdPAccessToken()
 
         return true;
     }
-    catch(const Poco::Exception & ex)
+    catch (const Poco::Exception & e)
     {
-        error_stream << "Exception during token refresh: " << ex.displayText() << std::endl;
+        error_stream << "Exception during token refresh: " << e.displayText() << std::endl;
         return false;
     }
 }
