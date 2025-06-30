@@ -109,8 +109,11 @@ Connection::Connection(const String & host_, UInt16 port_,
     const String & client_name_,
     Protocol::Compression compression_,
     Protocol::Secure secure_,
-    const String & bind_host_,
-    std::shared_ptr<JwtProvider> jwt_provider_)
+    const String & bind_host_
+#if USE_JWT_CPP && USE_SSL
+    , std::shared_ptr<JwtProvider> jwt_provider_
+#endif
+)
     : host(host_), port(port_), default_database(default_database_)
     , user(user_), password(password_)
     , proto_send_chunked(proto_send_chunked_), proto_recv_chunked(proto_recv_chunked_)
@@ -1578,8 +1581,11 @@ ServerConnectionPtr Connection::createConnection(const ConnectionParameters & pa
         std::string(DEFAULT_CLIENT_NAME),
         parameters.compression,
         parameters.security,
-        parameters.bind_host,
-        parameters.jwt_provider);
+        parameters.bind_host
+#if USE_JWT_CPP && USE_SSL
+        , parameters.jwt_provider
+#endif
+        );
 }
 
 }

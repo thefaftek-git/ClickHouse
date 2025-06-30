@@ -17,22 +17,6 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/split.hpp>
 
-// For HTTP client, JSON, and device flow
-#include <Poco/Net/HTTPClientSession.h>
-#include <Poco/Net/HTTPRequest.h>
-#include <Poco/Net/HTTPResponse.h>
-#include <Poco/Net/HTTPSClientSession.h>
-#include <Poco/Net/Context.h>
-#include <Poco/Net/SSLManager.h>
-#include <Poco/StreamCopier.h>
-#include <Poco/URI.h>
-#include <Poco/JSON/Parser.h>
-#include <Poco/JSON/Object.h>
-#include <Poco/Dynamic/Var.h>
-#include <iostream>
-#include <thread>
-#include <chrono>
-#include <cstdlib>
 
 using namespace std::literals;
 

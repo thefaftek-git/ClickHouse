@@ -2938,7 +2938,7 @@ void ClientBase::addCommonOptions(OptionsDescription & options_description)
 
         ("config-file,C", po::value<std::string>(), "Path to config file")
 
-        ("login", po::bool_switch(), "Perform device grant flow for authentication.")
+        ("login", po::bool_switch()->default_value(false), "Perform device grant flow for authentication.")
         ("auth-url", po::value<std::string>(), "The authentication URL for the device grant flow.")
         ("auth-client-id", po::value<std::string>(), "Client ID for the authentication application.")
 
@@ -3128,7 +3128,7 @@ void ClientBase::addOptionsToTheClientConfiguration(const CommandLineOptions & o
     if (options.count("prompt"))
         getClientConfiguration().setString("prompt", options["prompt"].as<std::string>());
 
-    if (options.count("login"))
+    if (options["login"].as<bool>())
         getClientConfiguration().setBool("login", options["login"].as<bool>());
     if (options.count("auth-url"))
         getClientConfiguration().setString("auth-url", options["auth-url"].as<std::string>());

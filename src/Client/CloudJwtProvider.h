@@ -1,5 +1,7 @@
 #pragma once
 
+#if USE_JWT_CPP && USE_SSL
+
 #include <Client/JwtProvider.h>
 #include <Poco/Timestamp.h>
 #include <string>
@@ -33,3 +35,5 @@ private:
 };
 
 }
+
+#endif

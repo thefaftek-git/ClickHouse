@@ -65,8 +65,11 @@ public:
         const String & client_name_,
         Protocol::Compression compression_,
         Protocol::Secure secure_,
-        const String & bind_host_,
-        std::shared_ptr<JwtProvider> jwt_provider_ = nullptr);
+        const String & bind_host_
+#if USE_JWT_CPP && USE_SSL
+        , std::shared_ptr<JwtProvider> jwt_provider_ = nullptr
+#endif
+    );
 
     ~Connection() override;
 

@@ -371,7 +371,7 @@ try
     }
 
 #if USE_JWT_CPP && USE_SSL
-    if (config().has("login"))
+    if (config().getBool("login", false))
     {
         login();
     }
@@ -875,7 +875,7 @@ void Client::processOptions(
         config().setString("jwt", options["jwt"].as<std::string>());
         config().setString("user", "");
     }
-    if (options.count("login"))
+    if (options["login"].as<bool>())
     {
         if (!options["user"].defaulted())
             throw Exception(ErrorCodes::BAD_ARGUMENTS, "User and login flags can't be specified together");

@@ -1,10 +1,12 @@
+#include <config.h>
+
+#if USE_JWT_CPP && USE_SSL
 #include <Client/JwtProvider.h>
 #include <Common/Exception.h>
 
 #include <Client/CloudJwtProvider.h>
 #include <Common/StringUtils.h>
 
-#include <Poco/Net/HTTPClientSession.h>
 #include <Poco/Net/HTTPRequest.h>
 #include <Poco/Net/HTTPResponse.h>
 #include <Poco/StreamCopier.h>
@@ -13,10 +15,8 @@
 #include <Poco/JSON/Object.h>
 #include <Poco/Dynamic/Var.h>
 #include <Poco/Net/Context.h>
-#if USE_SSL
 #include <Poco/Net/HTTPSClientSession.h>
 #include <Poco/Net/SSLManager.h>
-#endif
 
 #include <jwt-cpp/jwt.h>
 
@@ -220,18 +220,14 @@ bool JwtProvider::refreshIdPAccessToken()
     }
 }
 
-std::unique_ptr<Poco::Net::HTTPClientSession> JwtProvider::createHTTPSession(const Poco::URI & uri)
+std::unique_ptr<Poco::Net::HTTPSClientSession> JwtProvider::createHTTPSession(const Poco::URI & uri)
 {
     if (uri.getScheme() == "https")
     {
-    #if USE_SSL
         Poco::Net::Context::Ptr context = Poco::Net::SSLManager::instance().defaultClientContext();
         return std::make_unique<Poco::Net::HTTPSClientSession>(uri.getHost(), uri.getPort(), context);
-    #else
-        throw Exception(ErrorCodes::SUPPORT_IS_DISABLED, "HTTPS is not supported because ClickHouse was built without SSL support.");
-    #endif
     }
-    return std::make_unique<Poco::Net::HTTPClientSession>(uri.getHost(), uri.getPort());
+    throw Exception(ErrorCodes::SUPPORT_IS_DISABLED, "Built without SSL, ClickHouse cannot use JWT authentication without SSL support.");
 }
 
 bool JwtProvider::openURLInBrowser(const std::string & url)
@@ -293,3 +289,5 @@ std::unique_ptr<JwtProvider> createJwtProvider(
 }
 
 }
+
+#endif

@@ -1,15 +1,15 @@
+#include <config.h>
+
+#if USE_JWT_CPP && USE_SSL
 #include <Client/CloudJwtProvider.h>
 #include <Common/Exception.h>
 #include <Common/StringUtils.h>
-#include <config.h>
 
 #include <Poco/Net/HTTPClientSession.h>
 #include <Poco/Net/HTTPRequest.h>
 #include <Poco/Net/HTTPResponse.h>
-#if USE_SSL
 #include <Poco/Net/HTTPSClientSession.h>
 #include <Poco/Net/SSLManager.h>
-#endif
 #include <Poco/StreamCopier.h>
 #include <Poco/URI.h>
 #include <Poco/JSON/Parser.h>
@@ -23,6 +23,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <jwt-cpp/jwt.h>
+
 
 namespace DB
 {
@@ -178,3 +179,4 @@ bool CloudJwtProvider::swapIdPTokenForClickHouseJWT(bool show_messages)
 }
 
 }
+#endif

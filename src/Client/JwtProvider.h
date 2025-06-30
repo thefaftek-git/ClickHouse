@@ -1,12 +1,11 @@
 #pragma once
 
+#if USE_JWT_CPP && USE_SSL
 #include <config.h>
 
 #include <Poco/Net/HTTPClientSession.h>
-#if USE_SSL
 #include <Poco/Net/HTTPSClientSession.h>
 #include <Poco/Net/SSLManager.h>
-#endif
 #include <Poco/Timestamp.h>
 #include <Poco/URI.h>
 
@@ -38,7 +37,7 @@ protected:
     bool initialLogin();
     bool refreshIdPAccessToken();
 
-    static std::unique_ptr<Poco::Net::HTTPClientSession> createHTTPSession(const Poco::URI & uri);
+    static std::unique_ptr<Poco::Net::HTTPSClientSession> createHTTPSession(const Poco::URI & uri);
     static bool openURLInBrowser(const std::string & url);
 
     // Configuration
@@ -64,3 +63,5 @@ std::unique_ptr<JwtProvider> createJwtProvider(
 
 bool isCloudEndpoint(const std::string & host);
 }
+
+#endif
