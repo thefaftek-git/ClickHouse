@@ -28,8 +28,9 @@ struct ConnectionParameters
     std::string proto_recv_chunked = "notchunked";
     std::string quota_key;
     SSHKey ssh_private_key;
-    std::string jwt;
+#if USE_JWT_CPP && USE_SSL
     std::shared_ptr<JwtProvider> jwt_provider;
+#endif
     Protocol::Secure security = Protocol::Secure::Disable;
     std::string bind_host;
     Protocol::Compression compression = Protocol::Compression::Enable;

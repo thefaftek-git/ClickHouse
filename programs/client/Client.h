@@ -32,7 +32,9 @@ protected:
     bool buzzHouse() override;
     bool processASTFuzzerStep(const String & query_to_execute, const ASTPtr & parsed_query);
 
+#if USE_JWT_CPP && USE_SSL
     void login();
+#endif
 
     void connect() override;
 

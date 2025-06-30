@@ -24,8 +24,6 @@
 #include <Interpreters/Context.h>
 
 #include <Client/JwtProvider.h>
-#include <Client/CloudJwtProvider.h>
-#include <Client/ExternalIdpJwtProvider.h>
 
 #include <AggregateFunctions/registerAggregateFunctions.h>
 #include <Formats/FormatFactory.h>
@@ -372,10 +370,12 @@ try
         showClientVersion();
     }
 
+#if USE_JWT_CPP && USE_SSL
     if (config().has("login"))
     {
         login();
     }
+#endif
 
     try
     {
@@ -446,6 +446,7 @@ catch (...)
     return getCurrentExceptionCode();
 }
 
+#if USE_JWT_CPP && USE_SSL
 void Client::login()
 {
     std::string host = hosts_and_ports.front().host;
@@ -476,6 +477,7 @@ void Client::login()
         }
     }
 }
+#endif
 
 void Client::connect()
 {
@@ -501,7 +503,9 @@ void Client::connect()
             connection_parameters = ConnectionParameters(
                 config(), host, database, hosts_and_ports[attempted_address_index].port);
 
+#if USE_JWT_CPP && USE_SSL
             connection_parameters.jwt_provider = jwt_provider;
+#endif
 
             if (is_interactive)
                 output_stream << "Connecting to "
@@ -869,6 +873,14 @@ void Client::processOptions(
         if (!options["user"].defaulted())
             throw Exception(ErrorCodes::BAD_ARGUMENTS, "User and JWT flags can't be specified together");
         config().setString("jwt", options["jwt"].as<std::string>());
+        config().setString("user", "");
+    }
+    if (options.count("login"))
+    {
+        if (!options["user"].defaulted())
+            throw Exception(ErrorCodes::BAD_ARGUMENTS, "User and login flags can't be specified together");
+        if (config().has("jwt"))
+            throw Exception(ErrorCodes::BAD_ARGUMENTS, "JWT and login flags can't be specified together");
         config().setString("user", "");
     }
     if (options.count("accept-invalid-certificate"))

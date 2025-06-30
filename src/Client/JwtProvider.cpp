@@ -2,7 +2,6 @@
 #include <Common/Exception.h>
 
 #include <Client/CloudJwtProvider.h>
-#include <Client/ExternalIdpJwtProvider.h>
 #include <Common/StringUtils.h>
 
 #include <Poco/Net/HTTPClientSession.h>
@@ -14,8 +13,10 @@
 #include <Poco/JSON/Object.h>
 #include <Poco/Dynamic/Var.h>
 #include <Poco/Net/Context.h>
+#if USE_SSL
 #include <Poco/Net/HTTPSClientSession.h>
 #include <Poco/Net/SSLManager.h>
+#endif
 
 #include <jwt-cpp/jwt.h>
 
@@ -42,6 +43,27 @@ JwtProvider::JwtProvider(
       output_stream(out),
       error_stream(err)
 {
+}
+
+std::string JwtProvider::getJWT()
+{
+    Poco::Timestamp now;
+    Poco::Timestamp expiration_buffer = 15 * Poco::Timespan::SECONDS;
+
+    if (!idp_access_token.empty() && now < idp_access_token_expires_at - expiration_buffer)
+        return idp_access_token;
+
+    if (!idp_refresh_token.empty())
+    {
+        if (refreshIdPAccessToken())
+            return idp_access_token;
+    }
+
+    if (initialLogin())
+        return idp_access_token;
+
+    error_stream << "Failed to obtain a valid JWT from the external provider." << std::endl;
+    return "";
 }
 
 bool JwtProvider::initialLogin()
@@ -96,13 +118,11 @@ bool JwtProvider::initialLogin()
         interval_seconds = object->getValue<int>("interval");
         expires_at_ts = Poco::Timestamp().epochTime() + object->getValue<int>("expires_in");
 
-        output_stream << "\nAttempting to automatically open the authentication URL in your browser.\n"
-                      << "For authentication, use the following code: \033[1m" << user_code << "\033[0m\n" << std::endl;
+        output_stream << "\nOpening your browser for login. If it doesn't open, visit:"
+                      << "\n\n        " << verification_uri_complete << "\n\n"
+                      << "Then enter the code: \033[1m" << user_code << "\033[0m\n" << std::endl;
 
-        if (!openURLInBrowser(verification_uri_complete))
-        {
-            output_stream << "Please visit the URL below in your browser to complete authentication:\n" << verification_uri_complete << "\n" << std::endl;
-        }
+        openURLInBrowser(verification_uri_complete);
     }
     catch (const Poco::Exception & e)
     {
@@ -231,22 +251,20 @@ bool JwtProvider::openURLInBrowser(const std::string & url)
     if (command.empty())
         return false;
 
-    std::string full_command = command + " '" + url + "'";
-    if (std::system(full_command.c_str()) != 0)
-        return false;
-
-    return true;
+    return std::system((command + " " + url).c_str()) == 0;
 }
 
 Poco::Timestamp JwtProvider::getJwtExpiry(const std::string & token)
 {
+    if (token.empty())
+        return 0;
+
     try
     {
-        auto decoded = jwt::decode(token);
-        auto expiry_time = decoded.get_payload_claim("exp").as_date();
-        return Poco::Timestamp::fromEpochTime(std::chrono::system_clock::to_time_t(expiry_time));
+        auto decoded_token = jwt::decode(token);
+        return Poco::Timestamp::fromEpochTime(decoded_token.get_payload_claim("exp").as_integer());
     }
-    catch (...)
+    catch (const std::exception &)
     {
         return 0;
     }
@@ -270,7 +288,7 @@ std::unique_ptr<JwtProvider> createJwtProvider(
     }
     else
     {
-        return std::make_unique<ExternalIdpJwtProvider>(auth_url, client_id, out, err);
+        return std::make_unique<JwtProvider>(auth_url, client_id, out, err);
     }
 }
 

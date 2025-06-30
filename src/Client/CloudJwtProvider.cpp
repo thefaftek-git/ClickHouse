@@ -6,9 +6,10 @@
 #include <Poco/Net/HTTPClientSession.h>
 #include <Poco/Net/HTTPRequest.h>
 #include <Poco/Net/HTTPResponse.h>
+#if USE_SSL
 #include <Poco/Net/HTTPSClientSession.h>
-#include <Poco/Net/Context.h>
 #include <Poco/Net/SSLManager.h>
+#endif
 #include <Poco/StreamCopier.h>
 #include <Poco/URI.h>
 #include <Poco/JSON/Parser.h>
@@ -22,7 +23,6 @@
 #include <cstdlib>
 #include <iostream>
 #include <jwt-cpp/jwt.h>
-#include <sstream>
 
 namespace DB
 {
@@ -144,14 +144,8 @@ bool CloudJwtProvider::swapIdPTokenForClickHouseJWT(bool show_messages)
         auto session = createHTTPSession(swap_uri);
         Poco::Net::HTTPRequest request(Poco::Net::HTTPRequest::HTTP_POST, swap_uri.getPathAndQuery(), Poco::Net::HTTPMessage::HTTP_1_1);
         request.set("Authorization", "Bearer " + idp_access_token);
-
-        Poco::JSON::Object body;
-        body.set("hostname", host_str);
-        std::stringstream body_stream;
-        body.stringify(body_stream);
-        std::string request_body = body_stream.str();
-
         request.setContentType("application/json; charset=utf-8");
+        std::string request_body = "{\"hostname\": \"" + host_str + "\"}";
         request.setContentLength(request_body.length());
         session->sendRequest(request) << request_body;
 

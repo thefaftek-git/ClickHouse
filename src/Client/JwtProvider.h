@@ -2,9 +2,11 @@
 
 #include <config.h>
 
-#include <Poco/Net/Context.h>
+#include <Poco/Net/HTTPClientSession.h>
+#if USE_SSL
 #include <Poco/Net/HTTPSClientSession.h>
 #include <Poco/Net/SSLManager.h>
+#endif
 #include <Poco/Timestamp.h>
 #include <Poco/URI.h>
 
@@ -29,7 +31,7 @@ public:
     /// Returns a valid ClickHouse JWT.
     /// Implementations are responsible for handling the entire lifecycle,
     /// including initial login and subsequent refreshes.
-    virtual std::string getJWT() = 0;
+    virtual std::string getJWT();
     static Poco::Timestamp getJwtExpiry(const std::string & token);
 
 protected:
