@@ -23,7 +23,7 @@
 #include <IO/WriteHelpers.h>
 #include <Interpreters/Context.h>
 
-#include <Client/JwtProvider.h>
+#include <Client/JWTProvider.h>
 
 #include <AggregateFunctions/registerAggregateFunctions.h>
 #include <Formats/FormatFactory.h>

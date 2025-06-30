@@ -2,7 +2,7 @@
 
 #if USE_JWT_CPP && USE_SSL
 
-#include <Client/JwtProvider.h>
+#include <Client/JWTProvider.h>
 #include <Poco/Timestamp.h>
 #include <string>
 #include <iosfwd>
@@ -11,10 +11,10 @@ namespace DB
 {
 
 /// JWT Provider for the ClickHouse managed service flow, which involves a token swap.
-class CloudJwtProvider : public JwtProvider
+class CloudJWTProvider : public JWTProvider
 {
 public:
-    CloudJwtProvider(
+    CloudJWTProvider(
         std::string auth_url,
         std::string client_id,
         std::string host,

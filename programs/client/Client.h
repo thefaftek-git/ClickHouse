@@ -77,7 +77,7 @@ private:
     std::optional<CurrentThread::QueryScope> query_scope;
 
 #if USE_JWT_CPP && USE_SSL
-    std::shared_ptr<JwtProvider> jwt_provider;
+    std::shared_ptr<JWTProvider> jwt_provider;
 #endif
 };
 }

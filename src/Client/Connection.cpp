@@ -39,7 +39,7 @@
 #include <pcg_random.hpp>
 #include <base/scope_guard.h>
 #include <Common/FailPoint.h>
-#include <Client/JwtProvider.h>
+#include <Client/JWTProvider.h>
 
 #include <Common/config_version.h>
 #include <Common/scope_guard_safe.h>
@@ -111,7 +111,7 @@ Connection::Connection(const String & host_, UInt16 port_,
     Protocol::Secure secure_,
     const String & bind_host_
 #if USE_JWT_CPP && USE_SSL
-    , std::shared_ptr<JwtProvider> jwt_provider_
+    , std::shared_ptr<JWTProvider> jwt_provider_
 #endif
 )
     : host(host_), port(port_), default_database(default_database_)
@@ -830,7 +830,7 @@ void Connection::sendQuery(
 #if USE_JWT_CPP && USE_SSL
     if (jwt_provider && !jwt.empty())
     {
-        if (JwtProvider::getJwtExpiry(jwt) < (Poco::Timestamp() + Poco::Timespan(30, 0)))
+        if (JWTProvider::getJwtExpiry(jwt) < (Poco::Timestamp() + Poco::Timespan(30, 0)))
         {
             String new_jwt = jwt_provider->getJWT();
             if (!new_jwt.empty())

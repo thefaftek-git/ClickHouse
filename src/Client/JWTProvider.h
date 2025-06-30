@@ -17,15 +17,15 @@
 namespace DB
 {
 
-class JwtProvider
+class JWTProvider
 {
 public:
-    JwtProvider(
+    JWTProvider(
         std::string auth_url,
         std::string client_id,
         std::ostream & out,
         std::ostream & err);
-    virtual ~JwtProvider() = default;
+    virtual ~JWTProvider() = default;
 
     /// Returns a valid ClickHouse JWT.
     /// Implementations are responsible for handling the entire lifecycle,
@@ -54,7 +54,7 @@ protected:
 };
 
 /// Creates the appropriate JWT provider based on the application configuration.
-std::unique_ptr<JwtProvider> createJwtProvider(
+std::unique_ptr<JWTProvider> createJwtProvider(
     const std::string & auth_url,
     const std::string & client_id,
     const std::string & host,

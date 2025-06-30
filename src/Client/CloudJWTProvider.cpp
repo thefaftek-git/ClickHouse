@@ -1,7 +1,7 @@
 #include <config.h>
 
 #if USE_JWT_CPP && USE_SSL
-#include <Client/CloudJwtProvider.h>
+#include <Client/CloudJWTProvider.h>
 #include <Common/Exception.h>
 #include <Common/StringUtils.h>
 
@@ -77,10 +77,10 @@ inline const AuthEndpoints * getAuthEndpoints(const std::string & host)
 
 }
 
-CloudJwtProvider::CloudJwtProvider(
+CloudJWTProvider::CloudJWTProvider(
     std::string auth_url, std::string client_id, std::string host,
     std::ostream & out, std::ostream & err)
-    : JwtProvider(std::move(auth_url), std::move(client_id), out, err),
+    : JWTProvider(std::move(auth_url), std::move(client_id), out, err),
       host_str(std::move(host))
 {
     if (auth_url_str.empty() || client_id_str.empty())
@@ -95,7 +95,7 @@ CloudJwtProvider::CloudJwtProvider(
     }
 }
 
-std::string CloudJwtProvider::getJWT()
+std::string CloudJWTProvider::getJWT()
 {
     Poco::Timestamp now;
     Poco::Timestamp expiration_buffer = 30 * Poco::Timespan::SECONDS;
@@ -124,7 +124,7 @@ std::string CloudJwtProvider::getJWT()
     return "";
 }
 
-bool CloudJwtProvider::swapIdPTokenForClickHouseJWT(bool show_messages)
+bool CloudJWTProvider::swapIdPTokenForClickHouseJWT(bool show_messages)
 {
     const auto * endpoints = getAuthEndpoints(host_str);
 

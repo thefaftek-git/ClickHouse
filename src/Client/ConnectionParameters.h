@@ -15,7 +15,7 @@ class AbstractConfiguration;
 namespace DB
 {
 
-class JwtProvider;
+class JWTProvider;
 
 struct ConnectionParameters
 {
@@ -30,7 +30,7 @@ struct ConnectionParameters
     SSHKey ssh_private_key;
     std::string jwt;
 #if USE_JWT_CPP && USE_SSL
-    std::shared_ptr<JwtProvider> jwt_provider;
+    std::shared_ptr<JWTProvider> jwt_provider;
 #endif
     Protocol::Secure security = Protocol::Secure::Disable;
     std::string bind_host;

@@ -1,10 +1,10 @@
 #include <config.h>
 
 #if USE_JWT_CPP && USE_SSL
-#include <Client/JwtProvider.h>
+#include <Client/JWTProvider.h>
 #include <Common/Exception.h>
 
-#include <Client/CloudJwtProvider.h>
+#include <Client/CloudJWTProvider.h>
 #include <Common/StringUtils.h>
 
 #include <Poco/Net/HTTPRequest.h>
@@ -33,7 +33,7 @@ namespace ErrorCodes
     extern const int SUPPORT_IS_DISABLED;
 }
 
-JwtProvider::JwtProvider(
+JWTProvider::JWTProvider(
     std::string auth_url,
     std::string client_id,
     std::ostream & out,
@@ -45,7 +45,7 @@ JwtProvider::JwtProvider(
 {
 }
 
-std::string JwtProvider::getJWT()
+std::string JWTProvider::getJWT()
 {
     Poco::Timestamp now;
     Poco::Timestamp expiration_buffer = 15 * Poco::Timespan::SECONDS;
@@ -66,7 +66,7 @@ std::string JwtProvider::getJWT()
     return "";
 }
 
-bool JwtProvider::initialLogin()
+bool JWTProvider::initialLogin()
 {
     Poco::URI auth_uri_check(auth_url_str);
     std::string base_auth_url = auth_uri_check.getScheme() + "://" + auth_uri_check.getAuthority();
@@ -178,7 +178,7 @@ bool JwtProvider::initialLogin()
     return false;
 }
 
-bool JwtProvider::refreshIdPAccessToken()
+bool JWTProvider::refreshIdPAccessToken()
 {
     Poco::URI auth_uri_check(auth_url_str);
     std::string token_url_str = auth_uri_check.getScheme() + "://" + auth_uri_check.getAuthority() + "/oauth/token";
@@ -220,7 +220,7 @@ bool JwtProvider::refreshIdPAccessToken()
     }
 }
 
-std::unique_ptr<Poco::Net::HTTPSClientSession> JwtProvider::createHTTPSession(const Poco::URI & uri)
+std::unique_ptr<Poco::Net::HTTPSClientSession> JWTProvider::createHTTPSession(const Poco::URI & uri)
 {
     if (uri.getScheme() == "https")
     {
@@ -230,7 +230,7 @@ std::unique_ptr<Poco::Net::HTTPSClientSession> JwtProvider::createHTTPSession(co
     throw Exception(ErrorCodes::SUPPORT_IS_DISABLED, "Built without SSL, ClickHouse cannot use JWT authentication without SSL support.");
 }
 
-bool JwtProvider::openURLInBrowser(const std::string & url)
+bool JWTProvider::openURLInBrowser(const std::string & url)
 {
     if (url.empty())
         return true;
@@ -250,7 +250,7 @@ bool JwtProvider::openURLInBrowser(const std::string & url)
     return std::system((command + " " + url).c_str()) == 0;
 }
 
-Poco::Timestamp JwtProvider::getJwtExpiry(const std::string & token)
+Poco::Timestamp JWTProvider::getJwtExpiry(const std::string & token)
 {
     if (token.empty())
         return 0;
@@ -271,7 +271,7 @@ bool isCloudEndpoint(const std::string & host)
     return endsWith(host, ".clickhouse.cloud") || endsWith(host, ".clickhouse-staging.com") || endsWith(host, ".clickhouse-dev.com");
 }
 
-std::unique_ptr<JwtProvider> createJwtProvider(
+std::unique_ptr<JWTProvider> createJwtProvider(
     const std::string & auth_url,
     const std::string & client_id,
     const std::string & host,
@@ -280,11 +280,11 @@ std::unique_ptr<JwtProvider> createJwtProvider(
 {
     if (isCloudEndpoint(host))
     {
-        return std::make_unique<CloudJwtProvider>(auth_url, client_id, host, out, err);
+        return std::make_unique<CloudJWTProvider>(auth_url, client_id, host, out, err);
     }
     else
     {
-        return std::make_unique<JwtProvider>(auth_url, client_id, out, err);
+        return std::make_unique<JWTProvider>(auth_url, client_id, out, err);
     }
 }
 

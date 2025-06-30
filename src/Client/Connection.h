@@ -30,7 +30,7 @@ namespace DB
 struct Settings;
 struct TimeoutSetter;
 
-class JwtProvider;
+class JWTProvider;
 class Connection;
 struct ConnectionParameters;
 struct ClusterFunctionReadTaskResponse;
@@ -67,7 +67,7 @@ public:
         Protocol::Secure secure_,
         const String & bind_host_
 #if USE_JWT_CPP && USE_SSL
-        , std::shared_ptr<JwtProvider> jwt_provider_ = nullptr
+        , std::shared_ptr<JWTProvider> jwt_provider_ = nullptr
 #endif
     );
 
@@ -200,7 +200,7 @@ private:
     String quota_key;
 #if USE_JWT_CPP && USE_SSL
     String jwt;
-    std::shared_ptr<JwtProvider> jwt_provider;
+    std::shared_ptr<JWTProvider> jwt_provider;
 #endif
 
     /// For inter-server authorization
