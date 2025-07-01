@@ -28,17 +28,7 @@
 namespace DB
 {
 
-namespace
-{
-
-struct AuthEndpoints
-{
-    std::string auth_url;
-    std::string client_id;
-    std::string api_host;
-};
-
-static const std::map<std::string, AuthEndpoints> managed_service_endpoints = {
+const std::map<std::string, CloudJWTProvider::AuthEndpoints> CloudJWTProvider::managed_service_endpoints = {
     {
         ".clickhouse-dev.com",
         {
@@ -65,7 +55,7 @@ static const std::map<std::string, AuthEndpoints> managed_service_endpoints = {
     }
 };
 
-inline const AuthEndpoints * getAuthEndpoints(const std::string & host)
+const CloudJWTProvider::AuthEndpoints * CloudJWTProvider::getAuthEndpoints(const std::string & host)
 {
     for (const auto & [suffix, endpoints] : managed_service_endpoints)
     {
@@ -73,8 +63,6 @@ inline const AuthEndpoints * getAuthEndpoints(const std::string & host)
             return &endpoints;
     }
     return nullptr;
-}
-
 }
 
 CloudJWTProvider::CloudJWTProvider(
@@ -146,7 +134,7 @@ bool CloudJWTProvider::swapIdPTokenForClickHouseJWT(bool show_messages)
         Poco::Net::HTTPRequest request(Poco::Net::HTTPRequest::HTTP_POST, swap_uri.getPathAndQuery(), Poco::Net::HTTPMessage::HTTP_1_1);
         request.set("Authorization", "Bearer " + idp_access_token);
         request.setContentType("application/json; charset=utf-8");
-        std::string request_body = "{\"hostname\": \"" + host_str + "\"}";
+        std::string request_body = R"({"hostname": ")" + host_str + R"("})";
         request.setContentLength(request_body.length());
         session->sendRequest(request) << request_body;
 

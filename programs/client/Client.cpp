@@ -472,8 +472,7 @@ void Client::login()
         }
         else
         {
-            error_stream << "Login failed. Please check your credentials and try again." << std::endl;
-            exit(1);
+            throw Exception(ErrorCodes::AUTHENTICATION_FAILED, "Login failed. Please check your credentials and try again.");
         }
     }
 }
