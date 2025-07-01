@@ -6,6 +6,7 @@
 
 #include <Client/CloudJWTProvider.h>
 #include <Common/StringUtils.h>
+#include <Common/ErrorCodes.h>
 
 #include <Poco/Net/HTTPRequest.h>
 #include <Poco/Net/HTTPResponse.h>
@@ -31,6 +32,10 @@ namespace DB
 namespace ErrorCodes
 {
     extern const int SUPPORT_IS_DISABLED;
+    extern const int BAD_ARGUMENTS;
+    extern const int NETWORK_ERROR;
+    extern const int AUTHENTICATION_FAILED;
+    extern const int TIMEOUT_EXCEEDED;
 }
 
 JWTProvider::JWTProvider(
@@ -62,22 +67,17 @@ std::string JWTProvider::getJWT()
     if (initialLogin())
         return idp_access_token;
 
-    error_stream << "Failed to obtain a valid JWT from the external provider." << std::endl;
-    return "";
+    throw Exception(ErrorCodes::AUTHENTICATION_FAILED, "Failed to obtain a valid JWT from the external provider.");
 }
 
 bool JWTProvider::initialLogin()
 {
-    Poco::URI auth_uri_check(auth_url_str);
-    std::string base_auth_url = auth_uri_check.getScheme() + "://" + auth_uri_check.getAuthority();
-    std::string device_code_url_str = base_auth_url + "/oauth/device/code";
-    std::string token_url_str = base_auth_url + "/oauth/token";
+    if (client_id_str.empty() || auth_url_str.empty())
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "Error: --auth-client-id and --auth-url are required for --login.");
 
-    if (client_id_str.empty())
-    {
-        error_stream << "Error: --auth-client-id is required for --login." << std::endl;
-        return false;
-    }
+    Poco::URI device_code_url(auth_url_str + "/oauth/device/code");
+    Poco::URI token_url(auth_url_str + "/oauth/token");
+
     std::string scope = "openid profile email offline_access";
     std::string audience = "control-plane-web";
 
@@ -85,139 +85,106 @@ bool JWTProvider::initialLogin()
     int interval_seconds = 5;
     Poco::Timestamp::TimeVal expires_at_ts = 0;
 
-    try
+    auto device_code_session = createHTTPSession(device_code_url);
+    Poco::Net::HTTPRequest device_code_request(Poco::Net::HTTPRequest::HTTP_POST, device_code_url.getPathAndQuery(), Poco::Net::HTTPMessage::HTTP_1_1);
+    device_code_request.setContentType("application/x-www-form-urlencoded");
+
+    std::string encoded_scope;
+    Poco::URI::encode(scope, "", encoded_scope);
+    std::string encoded_audience;
+    Poco::URI::encode(audience, "", encoded_audience);
+    std::string device_code_request_body = "client_id=" + client_id_str + "&scope=" + encoded_scope + "&audience=" + encoded_audience;
+
+    device_code_request.setContentLength(device_code_request_body.length());
+    device_code_session->sendRequest(device_code_request) << device_code_request_body;
+
+    Poco::Net::HTTPResponse device_code_response;
+    std::istream & device_code_rs = device_code_session->receiveResponse(device_code_response);
+    if (device_code_response.getStatus() != Poco::Net::HTTPResponse::HTTP_OK)
     {
-        Poco::URI device_code_uri(device_code_url_str);
-        auto session = createHTTPSession(device_code_uri);
-        Poco::Net::HTTPRequest request(Poco::Net::HTTPRequest::HTTP_POST, device_code_uri.getPathAndQuery(), Poco::Net::HTTPMessage::HTTP_1_1);
-        request.setContentType("application/x-www-form-urlencoded");
-
-        std::string encoded_scope;
-        Poco::URI::encode(scope, "", encoded_scope);
-        std::string encoded_audience;
-        Poco::URI::encode(audience, "", encoded_audience);
-        std::string request_body = "client_id=" + client_id_str + "&scope=" + encoded_scope + "&audience=" + encoded_audience;
-
-        request.setContentLength(request_body.length());
-        session->sendRequest(request) << request_body;
-
-        Poco::Net::HTTPResponse response;
-        std::istream & rs = session->receiveResponse(response);
-        if (response.getStatus() != Poco::Net::HTTPResponse::HTTP_OK)
-        {
-            std::string error_body;
-            Poco::StreamCopier::copyToString(rs, error_body);
-            error_stream << "Error requesting device code: " << response.getStatus() << " " << response.getReason() << "\nResponse: " << error_body << std::endl;
-            return false;
-        }
-
-        Poco::JSON::Object::Ptr object = Poco::JSON::Parser().parse(rs).extract<Poco::JSON::Object::Ptr>();
-        device_code = object->getValue<std::string>("device_code");
-        std::string user_code = object->getValue<std::string>("user_code");
-        std::string verification_uri_complete = object->getValue<std::string>("verification_uri_complete");
-        interval_seconds = object->getValue<int>("interval");
-        expires_at_ts = Poco::Timestamp().epochTime() + object->getValue<int>("expires_in");
-
-        output_stream << "\nOpening your browser for login. If it doesn't open, visit:"
-                      << "\n\n        " << verification_uri_complete << "\n\n"
-                      << "Then enter the code: \033[1m" << user_code << "\033[0m\n" << std::endl;
-
-        openURLInBrowser(verification_uri_complete);
-    }
-    catch (const Poco::Exception & e)
-    {
-        error_stream << "Exception during device code request: " << e.displayText() << std::endl;
-        return false;
+        std::string error_body;
+        Poco::StreamCopier::copyToString(device_code_rs, error_body);
+        throw Exception(ErrorCodes::NETWORK_ERROR, "Error requesting device code: {} {}\nResponse: {}", device_code_response.getStatus(), device_code_response.getReason(), error_body);
     }
 
-    Poco::Timestamp now;
-    while (now.epochTime() < expires_at_ts)
+    Poco::JSON::Object::Ptr device_code_object = Poco::JSON::Parser().parse(device_code_rs).extract<Poco::JSON::Object::Ptr>();
+    device_code = device_code_object->getValue<std::string>("device_code");
+    std::string user_code = device_code_object->getValue<std::string>("user_code");
+    std::string verification_uri_complete = device_code_object->getValue<std::string>("verification_uri_complete");
+    interval_seconds = device_code_object->getValue<int>("interval");
+    expires_at_ts = Poco::Timestamp().epochTime() + device_code_object->getValue<int>("expires_in");
+
+    output_stream << "\nOpening your browser for login. If it doesn't open, visit:"
+                    << "\n\n        " << verification_uri_complete << "\n\n"
+                    << "Then enter the code: \033[1m" << user_code << "\033[0m\n" << std::endl;
+
+    openURLInBrowser(verification_uri_complete);
+
+    while (Poco::Timestamp().epochTime() < expires_at_ts)
     {
         std::this_thread::sleep_for(std::chrono::seconds(interval_seconds));
-        now.update();
-        try
+
+        auto token_session = createHTTPSession(token_url);
+        Poco::Net::HTTPRequest token_request(Poco::Net::HTTPRequest::HTTP_POST, token_url.getPathAndQuery(), Poco::Net::HTTPMessage::HTTP_1_1);
+        token_request.setContentType("application/x-www-form-urlencoded");
+        std::string token_request_body = "grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code=" + device_code + "&client_id=" + client_id_str;
+        token_request.setContentLength(token_request_body.length());
+        token_session->sendRequest(token_request) << token_request_body;
+
+        Poco::Net::HTTPResponse token_response;
+        std::istream & token_rs = token_session->receiveResponse(token_response);
+        std::string response_body;
+        Poco::StreamCopier::copyToString(token_rs, response_body);
+        Poco::JSON::Object::Ptr token_object = Poco::JSON::Parser().parse(response_body).extract<Poco::JSON::Object::Ptr>();
+
+        if (token_response.getStatus() == Poco::Net::HTTPResponse::HTTP_OK)
         {
-            Poco::URI token_uri(token_url_str);
-            auto session = createHTTPSession(token_uri);
-            Poco::Net::HTTPRequest request(Poco::Net::HTTPRequest::HTTP_POST, token_uri.getPathAndQuery(), Poco::Net::HTTPMessage::HTTP_1_1);
-            request.setContentType("application/x-www-form-urlencoded");
-            std::string request_body = "grant_type=urn:ietf:params:oauth:grant-type:device_code&device_code=" + device_code + "&client_id=" + client_id_str;
-            request.setContentLength(request_body.length());
-            session->sendRequest(request) << request_body;
-
-            Poco::Net::HTTPResponse response;
-            std::istream & rs = session->receiveResponse(response);
-            std::string response_body;
-            Poco::StreamCopier::copyToString(rs, response_body);
-            Poco::JSON::Object::Ptr object = Poco::JSON::Parser().parse(response_body).extract<Poco::JSON::Object::Ptr>();
-
-            if (response.getStatus() == Poco::Net::HTTPResponse::HTTP_OK)
-            {
-                idp_access_token = object->getValue<std::string>("access_token");
-                idp_access_token_expires_at = Poco::Timestamp::fromEpochTime(jwt::decode(idp_access_token).get_payload_claim("exp").as_integer());
-                if (object->has("refresh_token"))
-                    idp_refresh_token = object->getValue<std::string>("refresh_token");
-                return true;
-            }
-
-            std::string error = object->optValue<std::string>("error", "unknown_error");
-            if (error != "authorization_pending" && error != "slow_down")
-            {
-                error_stream << "IdP login failed: " << object->optValue<std::string>("error_description", error) << std::endl;
-                return false;
-            }
+            idp_access_token = token_object->getValue<std::string>("access_token");
+            idp_access_token_expires_at = Poco::Timestamp::fromEpochTime(jwt::decode(idp_access_token).get_payload_claim("exp").as_integer());
+            if (token_object->has("refresh_token"))
+                idp_refresh_token = token_object->getValue<std::string>("refresh_token");
+            return true;
         }
-        catch (const Poco::Exception & e)
+
+        std::string error = token_object->optValue<std::string>("error", "unknown_error");
+        if (error != "authorization_pending" && error != "slow_down")
         {
-            error_stream << "Error waiting for authorization: " << e.displayText() << std::endl;
-            std::this_thread::sleep_for(std::chrono::seconds(5));
+            throw Exception(ErrorCodes::AUTHENTICATION_FAILED, "IdP login failed: {}", token_object->optValue<std::string>("error_description", error));
         }
     }
 
-    error_stream << "Device login flow timed out." << std::endl;
-    return false;
+    throw Exception(ErrorCodes::TIMEOUT_EXCEEDED, "Device login flow timed out.");
 }
 
 bool JWTProvider::refreshIdPAccessToken()
 {
-    Poco::URI auth_uri_check(auth_url_str);
-    std::string token_url_str = auth_uri_check.getScheme() + "://" + auth_uri_check.getAuthority() + "/oauth/token";
+    Poco::URI token_url(auth_url_str + "/oauth/token");
 
-    try
+    auto session = createHTTPSession(token_url);
+    Poco::Net::HTTPRequest request(Poco::Net::HTTPRequest::HTTP_POST, token_url.getPathAndQuery(), Poco::Net::HTTPMessage::HTTP_1_1);
+    request.setContentType("application/x-www-form-urlencoded");
+
+    std::string request_body = "grant_type=refresh_token&client_id=" + client_id_str + "&refresh_token=" + idp_refresh_token;
+    request.setContentLength(request_body.length());
+    session->sendRequest(request) << request_body;
+
+    Poco::Net::HTTPResponse response;
+    std::istream & rs = session->receiveResponse(response);
+    if (response.getStatus() != Poco::Net::HTTPResponse::HTTP_OK)
     {
-        Poco::URI token_uri(token_url_str);
-        auto session = createHTTPSession(token_uri);
-        Poco::Net::HTTPRequest request(Poco::Net::HTTPRequest::HTTP_POST, token_uri.getPathAndQuery(), Poco::Net::HTTPMessage::HTTP_1_1);
-        request.setContentType("application/x-www-form-urlencoded");
-
-        std::string request_body = "grant_type=refresh_token&client_id=" + client_id_str + "&refresh_token=" + idp_refresh_token;
-        request.setContentLength(request_body.length());
-        session->sendRequest(request) << request_body;
-
-        Poco::Net::HTTPResponse response;
-        std::istream & rs = session->receiveResponse(response);
-        if (response.getStatus() != Poco::Net::HTTPResponse::HTTP_OK)
-        {
-            std::string error_body;
-            Poco::StreamCopier::copyToString(rs, error_body);
-            error_stream << "Error refreshing token: " << response.getStatus() << " " << response.getReason() << "\nResponse: " << error_body << std::endl;
-            idp_refresh_token.clear();
-            return false;
-        }
-
-        Poco::JSON::Object::Ptr object = Poco::JSON::Parser().parse(rs).extract<Poco::JSON::Object::Ptr>();
-        idp_access_token = object->getValue<std::string>("access_token");
-        idp_access_token_expires_at = Poco::Timestamp::fromEpochTime(jwt::decode(idp_access_token).get_payload_claim("exp").as_integer());
-        if (object->has("refresh_token"))
-             idp_refresh_token = object->getValue<std::string>("refresh_token");
-
-        return true;
+        std::string error_body;
+        Poco::StreamCopier::copyToString(rs, error_body);
+        idp_refresh_token.clear();
+        throw Exception(ErrorCodes::NETWORK_ERROR, "Error refreshing token: {} {}\nResponse: {}", response.getStatus(), response.getReason(), error_body);
     }
-    catch (const Poco::Exception & e)
-    {
-        error_stream << "Exception during token refresh: " << e.displayText() << std::endl;
-        return false;
-    }
+
+    Poco::JSON::Object::Ptr object = Poco::JSON::Parser().parse(rs).extract<Poco::JSON::Object::Ptr>();
+    idp_access_token = object->getValue<std::string>("access_token");
+    idp_access_token_expires_at = Poco::Timestamp::fromEpochTime(jwt::decode(idp_access_token).get_payload_claim("exp").as_integer());
+    if (object->has("refresh_token"))
+            idp_refresh_token = object->getValue<std::string>("refresh_token");
+
+    return true;
 }
 
 std::unique_ptr<Poco::Net::HTTPSClientSession> JWTProvider::createHTTPSession(const Poco::URI & uri)
@@ -260,7 +227,7 @@ Poco::Timestamp JWTProvider::getJwtExpiry(const std::string & token)
         auto decoded_token = jwt::decode(token);
         return Poco::Timestamp::fromEpochTime(decoded_token.get_payload_claim("exp").as_integer());
     }
-    catch (const std::exception &)
+    catch (...)
     {
         return 0;
     }

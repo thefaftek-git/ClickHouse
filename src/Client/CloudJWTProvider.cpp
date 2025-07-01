@@ -4,6 +4,7 @@
 #include <Client/CloudJWTProvider.h>
 #include <Common/Exception.h>
 #include <Common/StringUtils.h>
+#include <Common/ErrorCodes.h>
 
 #include <Poco/Net/HTTPClientSession.h>
 #include <Poco/Net/HTTPRequest.h>
@@ -17,6 +18,8 @@
 #include <Poco/Dynamic/Var.h>
 
 #include <IO/WriteBufferFromString.h>
+#include <IO/WriteHelpers.h>
+#include <Formats/FormatSettings.h>
 
 #include <thread>
 #include <chrono>
@@ -27,6 +30,13 @@
 
 namespace DB
 {
+
+namespace ErrorCodes
+{
+    extern const int BAD_ARGUMENTS;
+    extern const int NETWORK_ERROR;
+    extern const int AUTHENTICATION_FAILED;
+}
 
 const std::map<std::string, CloudJWTProvider::AuthEndpoints> CloudJWTProvider::managed_service_endpoints = {
     {
@@ -101,69 +111,68 @@ std::string CloudJWTProvider::getJWT()
     // If we have a valid IDP access token, attempt to swap it for a ClickHouse JWT.
     if (!idp_access_token.empty() && now < idp_access_token_expires_at - expiration_buffer)
     {
-        if (swapIdPTokenForClickHouseJWT(false))
-            return clickhouse_jwt;
+        swapIdPTokenForClickHouseJWT(false);
+        return clickhouse_jwt;
     }
 
     // If we don't have a valid ClickHouse JWT, attempt to login and swap the IDP token for a ClickHouse JWT.
-    if (initialLogin() && swapIdPTokenForClickHouseJWT(true))
+    if (initialLogin())
+    {
+        swapIdPTokenForClickHouseJWT(true);
         return clickhouse_jwt;
+    }
 
-    return "";
+    throw Exception(ErrorCodes::AUTHENTICATION_FAILED, "Failed to obtain a valid JWT from the external provider.");
 }
 
-bool CloudJWTProvider::swapIdPTokenForClickHouseJWT(bool show_messages)
+void CloudJWTProvider::swapIdPTokenForClickHouseJWT(bool show_messages)
 {
     const auto * endpoints = getAuthEndpoints(host_str);
 
     if (!endpoints)
-    {
-        error_stream << "Error: cannot determine token swap endpoint from hostname " << host_str
-                     << ". Please use a managed ClickHouse hostname." << std::endl;
-        return false;
-    }
+        throw Exception(
+            ErrorCodes::BAD_ARGUMENTS,
+            "Cannot determine token swap endpoint from hostname {}. Please use a managed ClickHouse hostname.",
+            host_str);
 
-    std::string swap_url = endpoints->api_host + "/api/tokenSwap";
+    Poco::URI swap_url = Poco::URI(endpoints->api_host + "/api/tokenSwap");
 
     if (show_messages)
         output_stream << "Authenticating access to " << host_str << "." << std::endl;
-    try
+
+    auto session = createHTTPSession(swap_url);
+    Poco::Net::HTTPRequest request(Poco::Net::HTTPRequest::HTTP_POST, swap_url.getPathAndQuery(), Poco::Net::HTTPMessage::HTTP_1_1);
+    request.set("Authorization", "Bearer " + idp_access_token);
+    request.setContentType("application/json; charset=utf-8");
+
+    std::string request_body;
+    WriteBufferFromString request_payload_buffer(request_body);
+    writeCString(R"({"hostname": )", request_payload_buffer);
+    writeJSONString(host_str, request_payload_buffer, {});
+    writeCString(R"(})", request_payload_buffer);
+    request_payload_buffer.finalize();
+
+    request.setContentLength(request_body.length());
+    session->sendRequest(request) << request_body;
+
+    Poco::Net::HTTPResponse response;
+    std::istream & rs = session->receiveResponse(response);
+    if (response.getStatus() != Poco::Net::HTTPResponse::HTTP_OK)
     {
-        Poco::URI swap_uri(swap_url);
-        auto session = createHTTPSession(swap_uri);
-        Poco::Net::HTTPRequest request(Poco::Net::HTTPRequest::HTTP_POST, swap_uri.getPathAndQuery(), Poco::Net::HTTPMessage::HTTP_1_1);
-        request.set("Authorization", "Bearer " + idp_access_token);
-        request.setContentType("application/json; charset=utf-8");
-        std::string request_body = R"({"hostname": ")" + host_str + R"("})";
-        request.setContentLength(request_body.length());
-        session->sendRequest(request) << request_body;
-
-        Poco::Net::HTTPResponse response;
-        std::istream & rs = session->receiveResponse(response);
-        if (response.getStatus() != Poco::Net::HTTPResponse::HTTP_OK)
-        {
-            std::string error_body;
-            Poco::StreamCopier::copyToString(rs, error_body);
-            error_stream << "Error swapping token: " << response.getStatus() << " " << response.getReason() << "\nResponse: " << error_body << std::endl;
-            return false;
-        }
-
-        std::string response_body;
-        Poco::StreamCopier::copyToString(rs, response_body);
-
-        Poco::JSON::Object::Ptr object = Poco::JSON::Parser().parse(response_body).extract<Poco::JSON::Object::Ptr>();
-        clickhouse_jwt = object->getValue<std::string>("token");
-        clickhouse_jwt_expires_at = Poco::Timestamp::fromEpochTime(jwt::decode(clickhouse_jwt).get_payload_claim("exp").as_integer());
-
-        if (show_messages)
-            output_stream << "Authenticated with ClickHouse Cloud.\n" << std::endl;
-        return true;
+        std::string error_body;
+        Poco::StreamCopier::copyToString(rs, error_body);
+        throw Exception(ErrorCodes::NETWORK_ERROR, "Error swapping token: {} {}\nResponse: {}", response.getStatus(), response.getReason(), error_body);
     }
-    catch (const Poco::Exception & e)
-    {
-        error_stream << "Exception during token swap: " << e.displayText() << std::endl;
-        return false;
-    }
+
+    std::string response_body;
+    Poco::StreamCopier::copyToString(rs, response_body);
+
+    Poco::JSON::Object::Ptr object = Poco::JSON::Parser().parse(response_body).extract<Poco::JSON::Object::Ptr>();
+    clickhouse_jwt = object->getValue<std::string>("token");
+    clickhouse_jwt_expires_at = Poco::Timestamp::fromEpochTime(jwt::decode(clickhouse_jwt).get_payload_claim("exp").as_integer());
+
+    if (show_messages)
+        output_stream << "Authenticated with ClickHouse Cloud.\n" << std::endl;
 }
 
 }

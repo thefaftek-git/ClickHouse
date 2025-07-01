@@ -11,9 +11,6 @@ set (CLICKHOUSE_CLIENT_LINK
         clickhouse_common_io
         clickhouse_functions
         clickhouse_parsers
-        Poco::JSON
-        Poco::Net
-        Poco::Net::SSL
 )
 
 if (TARGET ch_contrib::jwt-cpp)

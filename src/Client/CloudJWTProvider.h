@@ -32,7 +32,7 @@ private:
         std::string api_host;
     };
 
-    bool swapIdPTokenForClickHouseJWT(bool show_messages = true);
+    void swapIdPTokenForClickHouseJWT(bool show_messages = true);
 
     static const AuthEndpoints * getAuthEndpoints(const std::string & host);
 
