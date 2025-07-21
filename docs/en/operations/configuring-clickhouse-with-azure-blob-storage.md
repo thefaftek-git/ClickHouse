@@ -151,6 +151,60 @@ docker run -d \
     clickhouse/clickhouse-server
 ```
 
+## Option 4: Using Managed Identity for Authentication (Recommended for Azure VMs)
+
+For enhanced security in Azure environments, you can use Managed Identity instead of storing credentials. This requires the ClickHouse container to have access to the Azure Instance Metadata Service.
+
+### Step 1: Create Managed Identity Configuration File
+
+Create a configuration file `azure_managed_identity.xml`:
+
+```xml
+<clickhouse>
+    <storage_configuration>
+        <disks>
+            <azure_disk>
+                <type>object_storage</type>
+                <object_storage_type>azure</object_storage_type>
+                <metadata_type>local</metadata_type>
+                <endpoint>https://your_account.blob.core.windows.net/your-container-name/</endpoint>
+                <!-- No credentials needed - will use Managed Identity -->
+            </azure_disk>
+        </disks>
+        <policies>
+            <azure_policy>
+                <volumes>
+                    <main><disk>azure_disk</disk></main>
+                </volumes>
+            </azure_policy>
+        </policies>
+    </storage_configuration>
+</clickhouse>
+```
+
+### Step 2: Run ClickHouse Docker Container with Managed Identity Access
+
+```bash
+docker run -d \
+    --name clickhouse-server \
+    -v "$PWD/azure_managed_identity.xml:/etc/clickhouse-server/config.d/azure_managed_identity.xml" \
+    --network host \  # Required to access Azure Instance Metadata Service
+    -p 8123:8123 -p 9000:9000 \
+    clickhouse/clickhouse-server
+```
+
+### Step 3: Configure Azure Permissions
+
+1. Assign the **Managed Identity** to your ClickHouse VM or container host
+2. Grant the **Storage Blob Data Contributor** role to the managed identity on your storage account
+3. Ensure the container can access the Azure Instance Metadata Service endpoint (`http://169.254.169.254/metadata/instance?api-version=2021-02-01`)
+
+### Important Notes
+
+- Managed Identity authentication only works when running ClickHouse on Azure VMs or containers with access to the Instance Metadata Service
+- The `--network host` option is required for Docker containers to access the metadata service
+- This approach provides the highest level of security as no credentials are stored anywhere
+
 ## Setting Azure Blob Storage as Default for All Tables
 
 To make Azure Blob Storage the default storage backend for all MergeTree tables, add this configuration:
