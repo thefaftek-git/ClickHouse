@@ -266,6 +266,83 @@ docker stop clickhouse-server
 docker rm clickhouse-server
 ```
 
+## Option 5: Using Azurite for Local Development (Recommended for Testing)
+
+Azurite is an open-source Azure Storage emulator that allows you to run a local instance of Blob Storage for development and testing purposes. This is ideal for local environments where you don't want to use real Azure credentials.
+
+### Step 1: Start Azurite Container
+
+First, start an Azurite container:
+
+```bash
+docker run -d --name azurite \
+    -p 10000:10000 -p 10001:10001 -p 10002:10002 \
+    mcr.microsoft.com/azure-storage/azurite
+```
+
+### Step 2: Create Azurite Configuration File
+
+Create a configuration file `azure_azurite.xml`:
+
+```xml
+<clickhouse>
+    <storage_configuration>
+        <disks>
+            <azurite_disk>
+                <type>object_storage</type>
+                <object_storage_type>azure</object_storage_type>
+                <metadata_type>local</metadata_type>
+                <!-- Use Azurite endpoint -->
+                <endpoint>http://host.docker.internal:10000/devstoreaccount1/</endpoint>
+                <account_name>devstoreaccount1</account_name>
+                <account_key>Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==</account_key>
+            </azurite_disk>
+        </disks>
+        <policies>
+            <azurite_policy>
+                <volumes>
+                    <main><disk>azurite_disk</disk></main>
+                </volumes>
+            </azurite_policy>
+        </policies>
+    </storage_configuration>
+</clickhouse>
+```
+
+### Step 3: Run ClickHouse Docker Container
+
+```bash
+docker run -d \
+    --name clickhouse-server \
+    -v "$PWD/azure_azurite.xml:/etc/clickhouse-server/config.d/azure_azurite.xml" \
+    --network host \  # Required to access Azurite container
+    -p 8123:8123 -p 9000:9000 \
+    clickhouse/clickhouse-server
+```
+
+### Step 4: Create and Test Tables
+
+Now you can create tables using the Azurite storage:
+
+```sql
+CREATE TABLE test_table (key UInt64, data String)
+ENGINE = MergeTree()
+ORDER BY key
+SETTINGS disk = 'azurite_disk';
+
+INSERT INTO test_table VALUES (1, 'test data');
+SELECT * FROM test_table;
+```
+
+### Important Notes
+
+- Azurite is intended for development and testing only - not for production use
+- The `--network host` option allows ClickHouse to access the Azurite container on `host.docker.internal`
+- Azurite uses a fixed account name (`devstoreaccount1`) and key for simplicity
+- You can run Azurite locally without Docker by following the [Azurite documentation](https://github.com/Azure/Azurite)
+
 ## Conclusion
 
 This guide provides multiple approaches to configure ClickHouse with Azure Blob Storage backend in Docker containers. The modern object storage approach is recommended for new deployments as it offers more flexibility and better integration with future ClickHouse versions.
+
+For development purposes, Azurite provides an excellent local testing environment without requiring real Azure credentials.

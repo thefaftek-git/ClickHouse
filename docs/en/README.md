@@ -42,12 +42,13 @@ Welcome to the ClickHouse documentation. This documentation provides comprehensi
 
 ## NEW: Azure Blob Storage Integration
 
-We've added comprehensive documentation for configuring ClickHouse with Azure Blob Storage backend, including multiple authentication methods:
+We've added comprehensive documentation for configuring ClickHouse with Azure Blob Storage backend, including multiple authentication methods and local testing options:
 
 1. Legacy `azure_blob_storage` disk type
 2. Modern object storage configuration
 3. Connection string authentication
 4. **Managed Identity** (recommended for Azure VMs)
+5. **Azurite** (recommended for local development/testing)
 
 Check out the new guide at:
 [Configuring ClickHouse with Azure Blob Storage](/operations/configuring-clickhouse-with-azure-blob-storage)
