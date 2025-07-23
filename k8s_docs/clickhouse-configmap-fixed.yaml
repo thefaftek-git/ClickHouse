@@ -1,0 +1,55 @@
+
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clickhouse-config
+data:
+  config.xml: |
+    <clickhouse>
+        <storage_configuration>
+            <disks>
+                <azure_blob_storage_disk>
+                    <type>object_storage</type>
+                    <object_storage_type>azure</object_storage_type>
+                    <metadata_type>local</metadata_type>
+                    <container_name>testcontainer</container_name>
+                    <connection_string>DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1/;</connection_string>
+                    <skip_access_check>false</skip_access_check>
+                </azure_blob_storage_disk>
+            </disks>
+            <policies>
+                <azure_policy>
+                    <volumes>
+                        <main><disk>azure_blob_storage_disk</disk></main>
+                    </volumes>
+                </azure_policy>
+            </policies>
+        </storage_configuration>
+
+        <!-- Set the storage policy as default for all MergeTree tables -->
+        <merge_tree>
+            <storage_policy>azure_policy</storage_policy>
+        </merge_tree>
+    </clickhouse>
+
+  users.xml: |
+    <clickhouse>
+        <users>
+            <default>
+                <password></password>
+                <networks>
+                    <ip>::/0</ip>
+                </networks>
+                <profile>default</profile>
+                <quota>default</quota>
+            </default>
+        </users>
+    </clickhouse>
+
+  metadata_type_local.xml: |
+    <metadata_type_local>
+        <!-- Empty file, ClickHouse will use local metadata -->
+    </metadata_type_local>
+
+

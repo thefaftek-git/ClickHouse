@@ -1,0 +1,22 @@
+
+
+
+
+
+
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod-clickhouse
+spec:
+  containers:
+  - name: test-container
+    image: clickhouse/clickhouse-client
+    command: ["sleep", "3600"]
+  restartPolicy: Never
+
+
+
+
