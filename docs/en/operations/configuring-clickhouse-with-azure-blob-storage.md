@@ -1,5 +1,3 @@
-
----
 description: 'Step-by-step guide to configure ClickHouse with Azure Blob Storage using Azurite in a Docker environment.'
 sidebar_label: 'Configure ClickHouse with Azure Blob Storage'
 sidebar_position: 15
@@ -90,7 +88,6 @@ Create a `config` directory with the following configuration files:
             </azure_policy>
         </policies>
     </storage_configuration>
-
     <!-- Set the storage policy as default for all MergeTree tables -->
     <merge_tree>
         <storage_policy>azure_policy</storage_policy>

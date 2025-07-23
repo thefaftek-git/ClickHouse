@@ -1,0 +1,14 @@
+
+# Sidebar configuration for Operations section
+- label: 'Operations'
+  position: 70
+  collapsible: true
+  collapsed: true
+  link:
+    type: generated-index
+    slug: /operations
+  entries:
+    - label: 'External disks for storing data'
+      id: en/operations/storing-data
+    - label: 'Configuring ClickHouse with Azure Blob Storage'
+      id: en/operations/configuring-clickhouse-with-azure-blob-storage
