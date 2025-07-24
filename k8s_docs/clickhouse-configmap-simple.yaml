@@ -1,0 +1,32 @@
+
+
+
+
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clickhouse-config-simple
+data:
+  config.xml: |
+    <clickhouse>
+        <!-- Basic configuration without Azure Blob Storage -->
+        <users>
+            <default>
+                <password></password>
+                <networks>
+                    <ip>::/0</ip>
+                </networks>
+                <profile>default</profile>
+                <quota>default</quota>
+            </default>
+        </users>
+
+        <!-- Set the storage policy as default for all MergeTree tables -->
+        <merge_tree>
+            <storage_policy>default</storage_policy>
+        </merge_tree>
+    </clickhouse>
+
+
+

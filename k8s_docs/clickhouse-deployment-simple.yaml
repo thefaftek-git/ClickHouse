@@ -1,0 +1,39 @@
+
+
+
+
+
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clickhouse-simple
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clickhouse-simple
+  template:
+    metadata:
+      labels:
+        app: clickhouse-simple
+    spec:
+      containers:
+      - name: clickhouse
+        image: clickhouse/clickhouse-server
+        ports:
+        - containerPort: 8123
+          name: http-port
+        - containerPort: 9000
+          name: native-port
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/clickhouse-server/
+      volumes:
+      - name: config-volume
+        configMap:
+          name: clickhouse-config-simple
+
+
+

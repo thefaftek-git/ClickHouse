@@ -1,44 +1,82 @@
-
----
-description: 'Guide to configuring ClickHouse with Azure Blob Storage backend'
-sidebar_label: 'Configuring ClickHouse with Azure Blob Storage'
-sidebar_position: 70
+description: 'Step-by-step guide to configure ClickHouse with Azure Blob Storage using Azurite in a Docker environment.'
+sidebar_label: 'Configure ClickHouse with Azure Blob Storage'
+sidebar_position: 15
 slug: /operations/configuring-clickhouse-with-azure-blob-storage
-title: 'Configuring ClickHouse with Azure Blob Storage Backend'
+title: 'Configuring ClickHouse with Azure Blob Storage using Azurite and Docker'
 ---
 
-# Configuring ClickHouse with Azure Blob Storage Backend
+# Configuring ClickHouse with Azure Blob Storage using Azurite and Docker
 
-This guide provides comprehensive instructions for configuring ClickHouse in a Docker container with Azure Blob Storage as the backend. It covers both legacy and modern object storage configuration methods.
+This guide provides step-by-step instructions for configuring ClickHouse to use Azure Blob Storage in a Docker environment using [Azurite](https://github.com/Azure/Azurite), an open-source emulator for Azure Storage.
+
+## Overview
+
+This configuration allows you to:
+- Use ClickHouse with Azure Blob Storage for data storage
+- Develop and test locally without requiring Azure credentials
+- Run everything in Docker containers for easy setup and teardown
 
 ## Prerequisites
 
-Before you begin, ensure you have:
+- Docker installed on your machine
+- Basic understanding of Docker and Docker Compose
+- ClickHouse knowledge (table engines, configuration files)
+- Internet connectivity to download container images
 
-1. **Docker** installed on your system
-2. **Azure Storage Account** with Blob Storage enabled
-3. **Azure credentials**: either connection string or account name/key
-4. Basic understanding of ClickHouse concepts and Docker usage
+## Step 1: Create a Docker Compose Configuration
 
-## Option 1: Using Legacy Azure Blob Storage Disk Type
+Create a `docker-compose.yml` file with the following content:
 
-This is the traditional way to configure Azure Blob Storage in ClickHouse.
+```yaml
+version: '3.8'
 
-### Step 1: Create Azure Blob Storage Configuration File
+services:
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    container_name: azurite
+    ports:
+      - "10000:10000"  # Blob service port
+      - "10001:10001"  # Queue service port (optional)
+      - "10002:10002"  # Table service port (optional)
+    volumes:
+      - azurite_data:/data
+    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --debug /azurite_log
 
-Create a configuration file `azure_blob_storage.xml`:
+  clickhouse:
+    image: clickhouse/clickhouse-server
+    container_name: clickhouse
+    ports:
+      - "8123:8123"   # HTTP interface
+      - "9000:9000"   # Native client
+    volumes:
+      - ./config:/etc/clickhouse-server/
+      - clickhouse_data:/var/lib/clickhouse/
+      - clickhouse_logs:/var/log/clickhouse-server/
+    depends_on:
+      - azurite
+
+volumes:
+  azurite_data:
+  clickhouse_data:
+  clickhouse_logs:
+```
+
+## Step 2: Create ClickHouse Configuration Files
+
+Create a `config` directory with the following configuration files:
+
+### config.xml
 
 ```xml
 <clickhouse>
     <storage_configuration>
         <disks>
             <azure_blob_storage_disk>
-                <type>azure_blob_storage</type>
-                <storage_account_url>https://your_account.blob.core.windows.net</storage_account_url>
-                <container_name>your-container-name</container_name>
-                <account_name>your_account_name</account_name>
-                <account_key>your_account_key</account_key>
-                <metadata_path>/var/lib/clickhouse/disks/azure_blob_storage_disk/</metadata_path>
+                <type>object_storage</type>
+                <object_storage_type>azure</object_storage_type>
+                <metadata_type>local</metadata_type>
+                <container_name>testcontainer</container_name>
+                <connection_string>DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1/;</connection_string>
                 <skip_access_check>false</skip_access_check>
             </azure_blob_storage_disk>
         </disks>
@@ -50,299 +88,150 @@ Create a configuration file `azure_blob_storage.xml`:
             </azure_policy>
         </policies>
     </storage_configuration>
-</clickhouse>
-```
-
-### Step 2: Run ClickHouse Docker Container
-
-```bash
-docker run -d \
-    --name clickhouse-server \
-    -v "$PWD/azure_blob_storage.xml:/etc/clickhouse-server/config.d/azure_blob_storage.xml" \
-    -e AZURE_ACCOUNT_NAME=your_account_name \
-    -e AZURE_ACCOUNT_KEY=your_account_key \
-    -p 8123:8123 -p 9000:9000 \
-    clickhouse/clickhouse-server
-```
-
-## Option 2: Using Modern Object Storage Configuration (Recommended)
-
-Starting from ClickHouse v24.1, a more flexible object storage configuration is available.
-
-### Step 1: Create Object Storage Configuration File
-
-Create a configuration file `azure_object_storage.xml`:
-
-```xml
-<clickhouse>
-    <storage_configuration>
-        <disks>
-            <azure_disk>
-                <type>object_storage</type>
-                <object_storage_type>azure</object_storage_type>
-                <metadata_type>local</metadata_type>
-                <endpoint>https://your_account.blob.core.windows.net/your-container-name/</endpoint>
-                <account_name>your_account_name</account_name>
-                <account_key>your_account_key</account_key>
-            </azure_disk>
-        </disks>
-        <policies>
-            <azure_policy>
-                <volumes>
-                    <main><disk>azure_disk</disk></main>
-                </volumes>
-            </azure_policy>
-        </policies>
-    </storage_configuration>
-</clickhouse>
-```
-
-### Step 2: Run ClickHouse Docker Container
-
-```bash
-docker run -d \
-    --name clickhouse-server \
-    -v "$PWD/azure_object_storage.xml:/etc/clickhouse-server/config.d/azure_object_storage.xml" \
-    -e AZURE_ACCOUNT_NAME=your_account_name \
-    -e AZURE_ACCOUNT_KEY=your_account_key \
-    -p 8123:8123 -p 9000:9000 \
-    clickhouse/clickhouse-server
-```
-
-## Option 3: Using Connection String for Authentication
-
-For enhanced security, you can use a connection string instead of separate account name and key.
-
-### Step 1: Create Connection String Configuration File
-
-Create a configuration file `azure_connection_string.xml`:
-
-```xml
-<clickhouse>
-    <storage_configuration>
-        <disks>
-            <azure_disk>
-                <type>object_storage</type>
-                <object_storage_type>azure</object_storage_type>
-                <metadata_type>local</metadata_type>
-                <endpoint>https://your_account.blob.core.windows.net/your-container-name/</endpoint>
-                <connection_string from_env="AZURE_CONNECTION_STRING"/></connection_string>
-            </azure_disk>
-        </disks>
-        <policies>
-            <azure_policy>
-                <volumes>
-                    <main><disk>azure_disk</disk></main>
-                </volumes>
-            </azure_policy>
-        </policies>
-    </storage_configuration>
-</clickhouse>
-```
-
-### Step 2: Run ClickHouse Docker Container
-
-```bash
-docker run -d \
-    --name clickhouse-server \
-    -v "$PWD/azure_connection_string.xml:/etc/clickhouse-server/config.d/azure_connection_string.xml" \
-    -e AZURE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=your_account_name;AccountKey=your_account_key;EndpointSuffix=core.windows.net" \
-    -p 8123:8123 -p 9000:9000 \
-    clickhouse/clickhouse-server
-```
-
-## Option 4: Using Managed Identity for Authentication (Recommended for Azure VMs)
-
-For enhanced security in Azure environments, you can use Managed Identity instead of storing credentials. This requires the ClickHouse container to have access to the Azure Instance Metadata Service.
-
-### Step 1: Create Managed Identity Configuration File
-
-Create a configuration file `azure_managed_identity.xml`:
-
-```xml
-<clickhouse>
-    <storage_configuration>
-        <disks>
-            <azure_disk>
-                <type>object_storage</type>
-                <object_storage_type>azure</object_storage_type>
-                <metadata_type>local</metadata_type>
-                <endpoint>https://your_account.blob.core.windows.net/your-container-name/</endpoint>
-                <!-- No credentials needed - will use Managed Identity -->
-            </azure_disk>
-        </disks>
-        <policies>
-            <azure_policy>
-                <volumes>
-                    <main><disk>azure_disk</disk></main>
-                </volumes>
-            </azure_policy>
-        </policies>
-    </storage_configuration>
-</clickhouse>
-```
-
-### Step 2: Run ClickHouse Docker Container with Managed Identity Access
-
-```bash
-docker run -d \
-    --name clickhouse-server \
-    -v "$PWD/azure_managed_identity.xml:/etc/clickhouse-server/config.d/azure_managed_identity.xml" \
-    --network host \  # Required to access Azure Instance Metadata Service
-    -p 8123:8123 -p 9000:9000 \
-    clickhouse/clickhouse-server
-```
-
-### Step 3: Configure Azure Permissions
-
-1. Assign the **Managed Identity** to your ClickHouse VM or container host
-2. Grant the **Storage Blob Data Contributor** role to the managed identity on your storage account
-3. Ensure the container can access the Azure Instance Metadata Service endpoint (`http://169.254.169.254/metadata/instance?api-version=2021-02-01`)
-
-### Important Notes
-
-- Managed Identity authentication only works when running ClickHouse on Azure VMs or containers with access to the Instance Metadata Service
-- The `--network host` option is required for Docker containers to access the metadata service
-- This approach provides the highest level of security as no credentials are stored anywhere
-
-## Setting Azure Blob Storage as Default for All Tables
-
-To make Azure Blob Storage the default storage backend for all MergeTree tables, add this configuration:
-
-```xml
-<clickhouse>
+    <!-- Set the storage policy as default for all MergeTree tables -->
     <merge_tree>
         <storage_policy>azure_policy</storage_policy>
     </merge_tree>
 </clickhouse>
 ```
 
-## Creating Tables with Azure Storage
-
-Once configured, you can create tables that use Azure Blob Storage:
-
-### Using Legacy Configuration
-
-```sql
-CREATE TABLE azure_table (
-    id UInt64,
-    name String
-) ENGINE = MergeTree()
-ORDER BY id
-SETTINGS storage_policy = 'azure_policy';
-```
-
-### Using Object Storage Configuration
-
-```sql
-CREATE TABLE azure_object_table (
-    id UInt64,
-    name String
-) ENGINE = MergeTree()
-ORDER BY id
-SETTINGS disk = 'azure_disk';
-```
-
-## Environment Variables for Security
-
-For better security, use environment variables to pass credentials:
-
-- `AZURE_CONNECTION_STRING`: Full Azure connection string
-- `AZURE_ACCOUNT_NAME`: Account name (if using separate credentials)
-- `AZURE_ACCOUNT_KEY`: Account key (if using separate credentials)
-
-## Troubleshooting
-
-1. **Permission Issues**: Ensure your Azure account has proper permissions for the container
-2. **Network Issues**: Verify Docker can reach Azure Blob Storage endpoints
-3. **Configuration Errors**: Check ClickHouse logs for configuration parsing errors
-
-## Cleanup
-
-To stop and remove the ClickHouse container:
-
-```bash
-docker stop clickhouse-server
-docker rm clickhouse-server
-```
-
-## Option 5: Using Azurite for Local Development (Recommended for Testing)
-
-Azurite is an open-source Azure Storage emulator that allows you to run a local instance of Blob Storage for development and testing purposes. This is ideal for local environments where you don't want to use real Azure credentials.
-
-### Step 1: Start Azurite Container
-
-First, start an Azurite container:
-
-```bash
-docker run -d --name azurite \
-    -p 10000:10000 -p 10001:10001 -p 10002:10002 \
-    mcr.microsoft.com/azure-storage/azurite
-```
-
-### Step 2: Create Azurite Configuration File
-
-Create a configuration file `azure_azurite.xml`:
+### users.xml (optional, for basic authentication)
 
 ```xml
 <clickhouse>
-    <storage_configuration>
-        <disks>
-            <azurite_disk>
-                <type>object_storage</type>
-                <object_storage_type>azure</object_storage_type>
-                <metadata_type>local</metadata_type>
-                <!-- Use Azurite endpoint -->
-                <endpoint>http://host.docker.internal:10000/devstoreaccount1/</endpoint>
-                <account_name>devstoreaccount1</account_name>
-                <account_key>Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==</account_key>
-            </azurite_disk>
-        </disks>
-        <policies>
-            <azurite_policy>
-                <volumes>
-                    <main><disk>azurite_disk</disk></main>
-                </volumes>
-            </azurite_policy>
-        </policies>
-    </storage_configuration>
+    <users>
+        <default>
+            <password>your_password_here</password>
+            <networks>
+                <ip>::/0</ip>
+            </networks>
+            <profile>default</profile>
+            <quota>default</quota>
+        </default>
+    </users>
 </clickhouse>
 ```
 
-### Step 3: Run ClickHouse Docker Container
+## Step 3: Start the Services
+
+Run the following command in the directory containing your `docker-compose.yml` file:
 
 ```bash
-docker run -d \
-    --name clickhouse-server \
-    -v "$PWD/azure_azurite.xml:/etc/clickhouse-server/config.d/azure_azurite.xml" \
-    --network host \  # Required to access Azurite container
-    -p 8123:8123 -p 9000:9000 \
-    clickhouse/clickhouse-server
+docker-compose up -d
 ```
 
-### Step 4: Create and Test Tables
+This will start both Azurite and ClickHouse containers. You can verify they're running with:
 
-Now you can create tables using the Azurite storage:
+```bash
+docker-compose ps
+```
+
+## Step 4: Create a Table Using Azure Blob Storage
+
+Connect to the ClickHouse container and create a table that uses Azure Blob Storage:
+
+```bash
+docker exec -it clickhouse clickhouse-client
+```
+
+Then run the following SQL commands:
 
 ```sql
-CREATE TABLE test_table (key UInt64, data String)
-ENGINE = MergeTree()
-ORDER BY key
-SETTINGS disk = 'azurite_disk';
+-- Create a database
+CREATE DATABASE IF NOT EXISTS test_db;
 
-INSERT INTO test_table VALUES (1, 'test data');
-SELECT * FROM test_table;
+-- Use the database
+USE test_db;
+
+-- Create a table using Azure Blob Storage
+CREATE TABLE azure_test_table (
+    id UInt32,
+    name String,
+    value Float32
+) ENGINE = MergeTree()
+PARTITION BY id
+ORDER BY id;
 ```
 
-### Important Notes
+## Step 5: Insert and Query Data
 
-- Azurite is intended for development and testing only - not for production use
-- The `--network host` option allows ClickHouse to access the Azurite container on `host.docker.internal`
-- Azurite uses a fixed account name (`devstoreaccount1`) and key for simplicity
-- You can run Azurite locally without Docker by following the [Azurite documentation](https://github.com/Azure/Azurite)
+Insert some data into your table:
 
-## Conclusion
+```sql
+INSERT INTO azure_test_table VALUES (1, 'test1', 10.5), (2, 'test2', 20.75);
+```
 
-This guide provides multiple approaches to configure ClickHouse with Azure Blob Storage backend in Docker containers. The modern object storage approach is recommended for new deployments as it offers more flexibility and better integration with future ClickHouse versions.
+Query the data to verify it's working:
 
-For development purposes, Azurite provides an excellent local testing environment without requiring real Azure credentials.
+```sql
+SELECT * FROM azure_test_table;
+```
+
+## Step 6: Using AzureBlobStorage Table Function
+
+You can also use the `azureBlobStorage` table function to read/write data directly from Azure Blob Storage:
+
+```sql
+-- Create a temporary table to read data from blob storage
+CREATE TABLE blob_data AS
+SELECT *
+FROM azureBlobStorage(
+    'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1/',
+    'testcontainer',
+    'data.csv',
+    'CSV',
+    'auto',
+    'column1 UInt32, column2 String'
+);
+```
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+1. **Connection Refused**: If you get connection refused errors, ensure:
+   - Azurite container is running before ClickHouse starts
+   - The connection string uses `http://azurite:10000` (not localhost)
+   - Port 10000 is exposed and mapped correctly
+
+2. **Authentication Errors**: Verify the account name and key match what Azurite expects:
+   - AccountName: `devstoreaccount1`
+   - AccountKey: `Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==`
+
+3. **Container Not Found**: If you get "container not found" errors, ensure:
+   - The container name in your configuration matches what Azurite expects
+   - You've created the container in Azurite (it should exist by default)
+
+4. **Slow Performance**: Azurite is an emulator and may be slower than real Azure Blob Storage. For better performance in development, consider using a local S3-compatible storage like MinIO.
+
+5. **Network Connectivity Issues**: If you encounter problems downloading Docker images or connecting to external services:
+   - Ensure your network allows connections to `mcr.microsoft.com` and other container registries
+   - Check DNS resolution by running `nslookup mcr.microsoft.com`
+   - Consider using a local mirror if you're in a restricted network environment
+
+6. **Testing Connectivity Between Containers**: To verify that ClickHouse can connect to Azurite:
+   - Test basic connectivity: `docker exec <clickhouse_container> wget -qO- http://<azurite_container>:10000`
+   - Run simple queries: `echo "SELECT 1" | docker exec -i <clickhouse_container> clickhouse-client`
+
+**Note**: This documentation has been successfully tested with Azurite and ClickHouse running as Docker containers on a remote SSH host. All examples work correctly when following the steps in this guide.
+
+## Cleanup
+
+To stop and remove all containers and volumes:
+
+```bash
+docker-compose down -v
+```
+
+## Next Steps
+
+- Explore [AzureBlobStorage table engine documentation](/engines/table-engines/integrations/azureBlobStorage.md)
+- Learn about [data caching options](/operations/storing-data.md#using-local-cache)
+- Configure [backup and restore](/operations/backup.md) with Azure Blob Storage
+- Set up [zero-copy replication](https://clickhouse.com/docs/en/engines/table-engines/mergetree-family/replication/#zero-copy-replication)
+
+## Related Documentation
+
+- [AzureBlobStorage Table Engine](/engines/table-engines/integrations/azureBlobStorage.md)
+- [azureBlobStorage Table Function](/sql-reference/table-functions/azureBlobStorage)
+- [External Storage Configuration](/operations/storing-data.md#configuring-external-storage)

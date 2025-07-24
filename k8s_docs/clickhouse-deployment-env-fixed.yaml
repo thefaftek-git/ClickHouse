@@ -1,0 +1,39 @@
+
+
+
+
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clickhouse-env
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clickhouse-env
+  template:
+    metadata:
+      labels:
+        app: clickhouse-env
+    spec:
+      containers:
+      - name: clickhouse
+        image: clickhouse/clickhouse-server
+        ports:
+        - containerPort: 8123
+          name: http-port
+        - containerPort: 9000
+          name: native-port
+        env:
+        - name: CLICKHOUSE_USER
+          value: "default"
+        - name: CLICKHOUSE_PASSWORD
+          value: ""
+        - name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+          value: "1"
+
+
+
+
